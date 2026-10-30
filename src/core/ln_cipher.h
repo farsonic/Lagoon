@@ -5,7 +5,7 @@
  * AES-GCM and GMAC (SP 800-38D), RC4 (NTLM key exchange / NTLMSSP MAC).
  *
  * Memory: AES uses four 1 KB T-tables (shared, const); an LnAes key
- * schedule is 244 bytes; an LnGcm adds a 256-byte GHASH table.
+ * schedule is 244 bytes; an LnGcm adds a 4 KB GHASH table.
  * SPDX-License-Identifier: GPL-2.0-only
  */
 #ifndef LN_CIPHER_H
@@ -36,7 +36,7 @@ int  ln_aes_ccm_decrypt(const LnAes *a, const u8 *nonce, int nlen, const u8 *aad
 /* AES-GCM with a 96-bit IV and 128-bit tag, in place */
 typedef struct LnGcm {
 	LnAes aes;
-	u32 m[16][4];            /* GHASH 4-bit multiplication table for H */
+	u32 m[256][4];           /* GHASH 8-bit multiplication table for H (4 KB) */
 } LnGcm;
 int  ln_gcm_setkey(LnGcm *g, const u8 *key, int keylen);
 void ln_gcm_encrypt(const LnGcm *g, const u8 iv[12], const u8 *aad, size_t alen,
