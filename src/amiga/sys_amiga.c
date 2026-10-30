@@ -126,8 +126,14 @@ const char *ln_hostname(void)
 {
 	static char h[64];
 	if (!h[0]) {
-		LONG r = GetVar((STRPTR)"HOSTNAME", (STRPTR)h, sizeof(h), GVF_GLOBAL_ONLY);
+		/* no "insert volume ENV:" requester when ENV: is not assigned yet */
+		struct Process *me = (struct Process *)FindTask(NULL);
+		APTR win = me->pr_WindowPtr;
+		LONG r;
 		char *dot;
+		me->pr_WindowPtr = (APTR)-1;
+		r = GetVar((STRPTR)"HOSTNAME", (STRPTR)h, sizeof(h), GVF_GLOBAL_ONLY);
+		me->pr_WindowPtr = win;
 		if (r <= 0)
 			strcpy(h, "Amiga");
 		if ((dot = strchr(h, '.')) != NULL)

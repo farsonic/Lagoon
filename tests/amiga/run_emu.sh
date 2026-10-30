@@ -39,6 +39,14 @@ work=$(mktemp -d "${TMPDIR:-/tmp}/lagoon-emu.XXXXXX")
 dh0=$work/dh0
 mkdir -p "$dh0/C" "$dh0/S" "$dh0/L" "$dh0/out" "$dh0/T" "$dh0/ENV" "$dh0/ENVARC"
 for f in Riptide rtcheck ping; do cp "$RIPTIDE_BUILD/$f" "$dh0/C/"; done
+# AmigaDOS commands from the AROS m68k system (the ROM has none: no Assign,
+# Copy, List ...); AROS_C overrides the source directory
+AROS_C=${AROS_C:-/tmp/claude-0/-home-user/3a066da9-8230-5cea-817a-b3782336c61e/scratchpad/arossys/C}
+for c in Assign Copy Date List Dir MakeDir Rename Delete Protect Filenote SetDate Info Type Execute \
+	Echo Wait Run Version Avail Touch Mount Status Path Stack Setenv Getenv Set Unset Join Search \
+	Break Lock Relabel Which Why Fault Eval If Else EndIf Skip Lab Ask Resident; do
+	[ -f "$AROS_C/$c" ] && cp "$AROS_C/$c" "$dh0/C/"
+done
 for f in "$@"; do cp "$f" "$dh0/C/"; done
 [ -n "${LAGOON_DH0_EXTRA:-}" ] && cp -r "$LAGOON_DH0_EXTRA"/. "$dh0/"
 cat > "$dh0/S/riptide.conf" <<CONF
@@ -51,7 +59,7 @@ CONF
 {
 	echo "FailAt 30"
 	echo "Stack 32768"
-	echo "Path DH0:C ADD"
+	echo "DH0:C/Path DH0:C ADD"
 	echo "Assign T: DH0:T"
 	echo "Assign ENV: DH0:ENV"
 	echo "Assign ENVARC: DH0:ENVARC"

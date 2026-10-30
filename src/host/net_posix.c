@@ -242,3 +242,58 @@ int ln_udp_broadcast(LnSock *s, int on)
 {
 	return setsockopt(s->fd, SOL_SOCKET, SO_BROADCAST, &on, sizeof(on)) < 0 ? map_errno(errno) : LN_OK;
 }
+
+/* ---- nfs: connect from a reserved port (1023 downwards to 600) ---- */
+int ln_tcp_connect_reserved(const char *host, u16 port, int timeout_ms, LnSock **out)
+{
+	LnAddr a[8];
+	int n = ln_resolve(host, a, 8), i, lport, last = LN_EACCES;
+	if (n < 0) return n;
+	for (i = 0; i < n; i++) {
+		a[i].port = port;
+		for (lport = 1023; lport >= 600; lport--) {
+			struct sockaddr_storage ss, ls;
+			socklen_t len, llen;
+			LnAddr la;
+			int fd, fl, one = 1, r;
+			to_sa(&a[i], &ss, &len);
+			memset(&la, 0, sizeof(la));
+			la.family = a[i].family;
+			la.port = (u16)lport;
+			to_sa(&la, &ls, &llen);
+			fd = socket(ss.ss_family, SOCK_STREAM, 0);
+			if (fd < 0) return map_errno(errno);
+			setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one));
+			if (bind(fd, (struct sockaddr *)&ls, llen) < 0) {
+				int e = errno;
+				close(fd);
+				if (e == EACCES || e == EPERM) return LN_EACCES;
+				continue;                    /* port in use */
+			}
+			fl = fcntl(fd, F_GETFL);
+			fcntl(fd, F_SETFL, fl | O_NONBLOCK);
+			r = connect(fd, (struct sockaddr *)&ss, len);
+			if (r < 0 && errno == EINPROGRESS) {
+				int err = 0;
+				socklen_t el = sizeof(err);
+				r = wait_fd(fd, POLLOUT, timeout_ms);
+				if (r == LN_OK) {
+					getsockopt(fd, SOL_SOCKET, SO_ERROR, &err, &el);
+					if (err == EADDRINUSE || err == EADDRNOTAVAIL) { close(fd); continue; }
+					r = err ? map_errno(err) : LN_OK;
+				}
+			} else if (r < 0) {
+				if (errno == EADDRINUSE || errno == EADDRNOTAVAIL) { close(fd); continue; }
+				r = map_errno(errno);
+			}
+			if (r != LN_OK) { close(fd); last = r; break; }   /* next address */
+			fcntl(fd, F_SETFL, fl);
+			setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
+			*out = ln_alloc(sizeof(LnSock));
+			if (!*out) { close(fd); return LN_ENOMEM; }
+			(*out)->fd = fd;
+			return LN_OK;
+		}
+	}
+	return last;
+}

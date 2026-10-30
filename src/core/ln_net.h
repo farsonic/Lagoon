@@ -48,4 +48,9 @@ int  ln_udp_recvfrom(LnSock *s, LnAddr *from, void *buf, size_t n, int timeout_m
 /* enable broadcast (NetBIOS name queries) */
 int  ln_udp_broadcast(LnSock *s, int on);
 
+/* ---- nfs: TCP connect from a reserved local port (<1024, tried from 1023
+ * downwards), which many NFS servers require ("secure" ports). Returns
+ * LN_EACCES if no reserved port can be bound (not privileged / all busy). */
+int  ln_tcp_connect_reserved(const char *host, u16 port, int timeout_ms, LnSock **out);
+
 #endif
