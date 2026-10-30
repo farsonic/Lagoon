@@ -1,7 +1,7 @@
 #!/bin/sh
 # Lagoon - start/stop the NFSv3 test server (nfs-ganesha, FSAL VFS).
 #   ganesha.sh start DIR [PORT [MNTPORT]]   -> exit 0 when serving, 77 if it cannot run
-#   ganesha.sh stop DIR
+#   ganesha.sh stop DIR                     (KEEP_RPCBIND=1: leave rpcbind running)
 # ganesha registers with the portmapper and refuses to start without one:
 # rpcbind is started if nothing listens on port 111 (and stopped again by
 # "stop" if we started it). DIR gets export/, ro/, recov/, the config and logs.
@@ -48,7 +48,7 @@ stop)
 		kill -9 "$pid" 2>/dev/null
 		[ -f "$dir/ganesha.pid" ] && mv "$dir/ganesha.pid" "$dir/ganesha.pid.old"
 	fi
-	if [ -f "$dir/rpcbind.started" ]; then
+	if [ -f "$dir/rpcbind.started" ] && [ -z "${KEEP_RPCBIND:-}" ]; then
 		kill "$(cat "$dir/rpcbind.started")" 2>/dev/null
 		mv "$dir/rpcbind.started" "$dir/rpcbind.stopped"
 	fi

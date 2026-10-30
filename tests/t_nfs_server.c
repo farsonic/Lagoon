@@ -25,7 +25,10 @@ static const LnOps *ops;
 
 static int server(const char *what)
 {
-	snprintf(cmd, sizeof(cmd), "tests/servers/nfs/ganesha.sh %s %s %d >/dev/null 2>&1", what, dir, PORT);
+	int keep = !strcmp(what, "restart-stop");
+	if (keep) what = "stop";
+	snprintf(cmd, sizeof(cmd), "%stests/servers/nfs/ganesha.sh %s %s %d >/dev/null 2>&1", keep ? "KEEP_RPCBIND=1 " : "",
+	         what, dir, PORT);
 	return WEXITSTATUS(system(cmd));
 }
 
@@ -390,7 +393,7 @@ int main(void)
 	n = ops->max_io(fs);
 	CHECK_INT(ops->write(g, 0, big, n), n);
 	ln_log_level = 1;
-	CHECK_INT(server("stop"), 0);
+	CHECK_INT(server("restart-stop"), 0);
 	{
 		/* replace the cached directory "st" while the server is down: its
 		 * old handle is stale afterwards (ganesha hides deleted directories
@@ -422,6 +425,8 @@ int main(void)
 	CHECK(st.size == 5);
 	ln_log_level = 0;
 
+	CHECK_INT(ops->remove(fs, "d1/big.bin"), LN_OK);     /* leave little behind in TMPDIR */
+	CHECK_INT(ops->remove(fs, "restart.bin"), LN_OK);
 	ops->unmount(fs);
 	free(big);
 	free(back);
