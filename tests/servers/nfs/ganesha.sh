@@ -46,7 +46,7 @@ stop)
 		i=0
 		while kill -0 "$pid" 2>/dev/null && [ $i -lt 40 ]; do sleep 0.25; i=$((i + 1)); done
 		kill -9 "$pid" 2>/dev/null
-		mv "$dir/ganesha.pid" "$dir/ganesha.pid.old"
+		[ -f "$dir/ganesha.pid" ] && mv "$dir/ganesha.pid" "$dir/ganesha.pid.old"
 	fi
 	if [ -f "$dir/rpcbind.started" ]; then
 		kill "$(cat "$dir/rpcbind.started")" 2>/dev/null
