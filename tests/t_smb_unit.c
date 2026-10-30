@@ -6,6 +6,7 @@
 #include "testutil.h"
 #include "smb/smb_int.h"
 #include "ln_charset.h"
+#include "ln_sys.h"
 
 static void ntlm(void)
 {
@@ -154,6 +155,7 @@ static void misc(void)
 
 int main(void)
 {
+	ln_log_level = -1;      /* the tampered-signature check logs an error on purpose */
 	ntlm();
 	kdf_sign();
 	status();
