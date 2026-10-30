@@ -175,6 +175,7 @@ static int nfs_lookup(LnFs *fs, const NfsFh *dir, const char *name, NfsFh *out, 
 	xdr_put_fh(&x, dir);
 	xdr_put_string(&x, name);
 	if ((e = nfs_call(fs, &x, &res, &st))) return e;
+	LN_LOG(3, "nfs: LOOKUP %s: %u", name, st);
 	if (st) return nfs_stat_to_ln(st);
 	if (xdr_get_fh(&res, out)) return LN_EPROTO;
 	if (xdr_get_post_attr(&res, a)) return LN_OK;
@@ -375,6 +376,7 @@ restart:
 }
 
 static int do_mnt(LnFs *fs, const char *path, NfsFh *fh);
+static int is_exported(LnFs *fs, const char *path);
 
 /* re-MNT the export and look the share root up again */
 static int remount(LnFs *fs)
@@ -568,6 +570,8 @@ static int nfs_mount(const LnUrl *u, const LnCreds *cr, LnFs **out)
 		}
 	}
 	if (e && !fs->mroot.len) {
+		/* servers say "access denied" for paths they do not export too */
+		if (e == LN_EACCES && !is_exported(fs, fs->rootpath)) e = LN_ENOSHARE;
 		LN_LOG(0, "nfs: MNT %s on %s: %s", fs->rootpath, fs->host, ln_strerror(e));
 		ln_free(fs);
 		return e;
@@ -1212,23 +1216,12 @@ static int nfs_setattr(LnFs *fs, const char *path, const LnStat *s, u32 mask)
 
 /* ------------------------------------------------------ list_shares */
 
-static int nfs_list_shares(const LnUrl *u, const LnCreds *cr, ln_share_cb cb, void *ud)
+/* MOUNT EXPORT: cb(dir, groups) for every export (uses fs scratch buffers) */
+static int do_export(LnFs *fs, ln_share_cb cb, void *ud)
 {
-	LnFs *fs;
 	NfsRpc m;
 	NfsXdr x, res;
-	int e, cl;
-	(void)cr;
-	fs = ln_alloc(sizeof(*fs));
-	if (!fs) return LN_ENOMEM;
-	parse_opts(fs, u);
-	fs->nfsport_fixed = 1;           /* only MOUNT is needed */
-	cl = rpc_auth_sys(fs->cred, sizeof(fs->cred), ln_time_unix(), ln_hostname(), fs->uid, fs->gid,
-	                  fs->gids, fs->ngids);
-	fs->credlen = cl > 0 ? (size_t)cl : 0;
-	e = find_ports(fs);
-	if (!e) e = mnt_rpc(fs, &m, 256 * 1024);
-	else { ln_free(fs); return e; }
+	int e = mnt_rpc(fs, &m, 256 * 1024);
 	if (!e) {
 		rpc_begin(&m, &x, MNT3_EXPORT);
 		e = rpc_call(&m, &x, &res);
@@ -1247,6 +1240,44 @@ static int nfs_list_shares(const LnUrl *u, const LnCreds *cr, ln_share_cb cb, vo
 	}
 	if (!e && res.err) e = LN_EPROTO;
 	rpc_close(&m);
+	return e;
+}
+
+/* mount: is some export a prefix of the path we want? */
+typedef struct ExpMatch { const char *path; int match; } ExpMatch;
+static void exp_match_cb(void *ud, const char *name, const char *groups)
+{
+	ExpMatch *em = ud;
+	size_t l = strlen(name);
+	(void)groups;
+	while (l > 1 && name[l - 1] == '/') l--;
+	if (!strncmp(em->path, name, l) && (l == 1 || em->path[l] == 0 || em->path[l] == '/'))
+		em->match = 1;
+}
+
+static int is_exported(LnFs *fs, const char *path)
+{
+	ExpMatch em;
+	em.path = path;
+	em.match = 0;
+	if (do_export(fs, exp_match_cb, &em)) return 1;    /* cannot tell */
+	return em.match;
+}
+
+static int nfs_list_shares(const LnUrl *u, const LnCreds *cr, ln_share_cb cb, void *ud)
+{
+	LnFs *fs;
+	int e, cl;
+	(void)cr;
+	fs = ln_alloc(sizeof(*fs));
+	if (!fs) return LN_ENOMEM;
+	parse_opts(fs, u);
+	fs->nfsport_fixed = 1;           /* only MOUNT is needed */
+	cl = rpc_auth_sys(fs->cred, sizeof(fs->cred), ln_time_unix(), ln_hostname(), fs->uid, fs->gid,
+	                  fs->gids, fs->ngids);
+	fs->credlen = cl > 0 ? (size_t)cl : 0;
+	e = find_ports(fs);
+	if (!e) e = do_export(fs, cb, ud);
 	ln_free(fs);
 	return e;
 }

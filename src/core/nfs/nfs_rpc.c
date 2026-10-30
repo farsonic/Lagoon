@@ -307,6 +307,8 @@ int rpc_connect(NfsRpc *r)
 {
 	int e;
 	rpc_disconnect(r);
+	LN_LOG(2, "nfs: connecting to %s:%u (program %u)%s", r->host, r->port, r->prog,
+	       r->secure ? " from a reserved port" : "");
 	if (r->secure) {
 		e = ln_tcp_connect_reserved(r->host, r->port, 10000, &r->sock);
 		if (e != LN_EACCES)
