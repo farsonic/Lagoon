@@ -1564,8 +1564,12 @@ int hc_setattr(HC *h, HLock *base, const char *apath, const LnStat *st, u32 mask
 	if (r == LN_OK && h->readonly)
 		r = LN_EROFS;
 	if (r == LN_OK) {
+		LnStat ns = *st;
+		/* the Amiga has no "hidden" bit: keep the server's */
+		if (mask & LN_SET_PROT)
+			ns.prot = (ns.prot & ~(u32)LN_P_HIDDEN) | (cur.prot & LN_P_HIDDEN);
 		flush_path(h, p);
-		RETRY(h, r, h->ops->setattr(h->fs, p, st, mask));
+		RETRY(h, r, h->ops->setattr(h->fs, p, &ns, mask));
 		invalidate(h, p, 0);
 	}
 	ln_free(p);
