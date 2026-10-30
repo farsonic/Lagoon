@@ -62,6 +62,8 @@ struct LnFs {
 	u8       *cmd, *rbuf;
 	LnFile   *files;
 	u32       last_login_ms;
+	u64       rbytes, wbytes;    /* transfer statistics (logged at unmount) */
+	u32       rms, wms;
 };
 
 /* ---------------------------------------------------------- calls ---- */
@@ -217,8 +219,16 @@ again:
 	if (r || (uam != UAM_GUEST && uam != UAM_CLEARTXT && code != kFPAuthContinue))
 		goto done;
 	if (uam == UAM_DHX2) {
-		if ((r = afp_dhx2_reply1(x, fs->rbuf, n, ra, sizeof(ra))) != 0)
+		/* exponent size: twice the strength of the group (NIST SP 800-57:
+		 * 1024-bit p ~ 80 bits -> 160-bit exponent, 2048 -> 224, else 256),
+		 * which keeps the login bearable on a 68020 */
+		size_t plen = n >= 8 ? ln_be16(fs->rbuf + 6) : 0;
+		size_t elen = plen <= 128 ? 20 : plen <= 256 ? 28 : 32;
+		u32 t1 = ln_ms();
+		if ((r = afp_dhx2_reply1(x, fs->rbuf, n, ra, elen)) != 0)
 			goto done;
+		LN_LOG(2, "afp: DHX2 with a %u-bit prime, %u-bit exponent: %u ms of modexp",
+		       (unsigned)(plen * 8), (unsigned)(elen * 8), (unsigned)(ln_ms() - t1));
 		ln_random(x->cnonce, 16);
 		x->cnonce[0] = (u8)((x->cnonce[0] & 0x7f) | 0x01);
 		alen = afp_dhx2_cont1(x, x->msg);
@@ -768,6 +778,7 @@ static long afp_read(LnFile *f, u64 off, void *buf, long n)
 {
 	LnFs *fs = f->fs;
 	long done = 0;
+	u32 t0 = ln_ms();
 	if (!f->valid)
 		return LN_ESTALE;
 	while (done < n) {
@@ -789,6 +800,8 @@ static long afp_read(LnFile *f, u64 off, void *buf, long n)
 		if (code == kFPEOFErr || got == 0)
 			break;
 	}
+	fs->rbytes += (u64)done;
+	fs->rms += ln_ms() - t0;
 	return done;
 }
 
@@ -796,6 +809,7 @@ static long afp_write(LnFile *f, u64 off, const void *buf, long n)
 {
 	LnFs *fs = f->fs;
 	long done = 0, chunk = LN_MIN(fs->maxio, (long)fs->c.quantum - 32);
+	u32 t0 = ln_ms();
 	if (!f->valid)
 		return LN_ESTALE;
 	while (done < n) {
@@ -825,6 +839,8 @@ static long afp_write(LnFile *f, u64 off, const void *buf, long n)
 			return done ? done : LN_EIO;
 		done += (long)(last - (off + (u64)done));
 	}
+	fs->wbytes += (u64)done;
+	fs->wms += ln_ms() - t0;
 	return done;
 }
 
@@ -1186,6 +1202,12 @@ static void afp_unmount(LnFs *fs)
 		call(fs, &b, fs->rbuf, 16, NULL);
 	}
 	session_close(fs);
+	if (fs->rbytes || fs->wbytes)
+		LN_LOG(1, "afp: read %lu KB in %lu ms (%lu KB/s), wrote %lu KB in %lu ms (%lu KB/s)",
+		       (unsigned long)(fs->rbytes >> 10), (unsigned long)fs->rms,
+		       (unsigned long)(fs->rms ? (fs->rbytes * 1000 / fs->rms) >> 10 : 0),
+		       (unsigned long)(fs->wbytes >> 10), (unsigned long)fs->wms,
+		       (unsigned long)(fs->wms ? (fs->wbytes * 1000 / fs->wms) >> 10 : 0));
 	fs_free(fs);
 }
 

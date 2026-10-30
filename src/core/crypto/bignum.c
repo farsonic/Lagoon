@@ -1,8 +1,9 @@
 /*
  * Lagoon - just enough big-number arithmetic for Diffie-Hellman: modular
- * exponentiation with Montgomery multiplication (CIOS form) and a fixed
+ * exponentiation with Montgomery multiplication and a fixed
  * 4-bit window, for 128..4096 bit odd moduli. Numbers are arrays of 32-bit
- * limbs, least significant first. The hot loop is bn_muladd(), which has
+ * limbs, least significant first; products and squares are formed in full
+ * and then reduced (SOS). The hot loop is bn_muladd(), which has
  * a 68020 assembler version (mulu.l 32x32->64) for vbcc.
  * SPDX-License-Identifier: GPL-2.0-only
  */
@@ -49,7 +50,7 @@ typedef struct Mont {
 	int   n;            /* limbs */
 	limb *m;            /* modulus */
 	limb  minv;         /* -m^-1 mod 2^32 */
-	limb *t;            /* n + 2 scratch limbs */
+	limb *t;            /* 2n + 2 scratch limbs */
 } Mont;
 
 /* -x^-1 mod 2^32 for odd x (Newton iteration) */
@@ -84,31 +85,58 @@ static limb sub_n(limb *r, const limb *a, const limb *b, int n)
 	return borrow;
 }
 
-/* r = a * b * R^-1 mod m (r may alias a or b) */
-static void mont_mul(Mont *M, limb *r, const limb *a, const limb *b)
+/* add c at t[0], rippling the carry upwards */
+static void add_carry(limb *t, limb c)
+{
+	while (c) {
+		limb s = *t + c;
+		c = s < c;
+		*t++ = s;
+	}
+}
+
+/* t (2n+2 limbs, the full product) -> r = t * R^-1 mod m */
+static void mont_reduce(Mont *M, limb *r, limb *t)
 {
 	int n = M->n, i;
-	limb *t = M->t, c, s;
-	memset(t, 0, (size_t)(n + 2) * sizeof(limb));
 	for (i = 0; i < n; i++) {
-		limb q;
-		c = bn_muladd(t, a, b[i], n);
-		s = t[n] + c;
-		t[n + 1] += s < c;
-		t[n] = s;
-		q = t[0] * M->minv;
-		c = bn_muladd(t, M->m, q, n);
-		s = t[n] + c;
-		t[n + 1] += s < c;
-		t[n] = s;
-		/* t[0] is 0 now: shift down one limb */
-		memmove(t, t + 1, (size_t)(n + 1) * sizeof(limb));
-		t[n + 1] = 0;
+		limb q = t[i] * M->minv;
+		add_carry(t + i + n, bn_muladd(t + i, M->m, q, n));
 	}
+	t += n;
 	if (t[n] || geq(t, M->m, n))
 		sub_n(r, t, M->m, n);
 	else
 		memcpy(r, t, (size_t)n * sizeof(limb));
+}
+
+/* r = a * b * R^-1 mod m (r may alias a or b); separated operand scanning */
+static void mont_mul(Mont *M, limb *r, const limb *a, const limb *b)
+{
+	int n = M->n, i;
+	limb *t = M->t;
+	memset(t, 0, (size_t)(2 * n + 2) * sizeof(limb));
+	for (i = 0; i < n; i++)
+		t[i + n] = bn_muladd(t + i, a, b[i], n);
+	mont_reduce(M, r, t);
+}
+
+/* r = a^2 * R^-1 mod m: the cross products once, doubled, plus the squares */
+static void mont_sqr(Mont *M, limb *r, const limb *a)
+{
+	int n = M->n, i;
+	limb *t = M->t, top = 0;
+	memset(t, 0, (size_t)(2 * n + 2) * sizeof(limb));
+	for (i = 0; i < n - 1; i++)
+		t[i + n] = bn_muladd(t + 2 * i + 1, a + i + 1, a[i], n - 1 - i);
+	for (i = 0; i < 2 * n; i++) {
+		limb v = t[i];
+		t[i] = (v << 1) | top;
+		top = v >> 31;
+	}
+	for (i = 0; i < n; i++)
+		add_carry(t + 2 * i + 1, bn_muladd(t + 2 * i, a + i, a[i], 1));
+	mont_reduce(M, r, t);
 }
 
 static void from_bytes(limb *r, int n, const u8 *p, size_t len)
@@ -175,14 +203,14 @@ int ln_bn_modexp(u8 *out, const u8 *base, size_t blen, const u8 *exp, size_t ele
 	bn = (int)((blen + 3) / 4);
 	if (bn < n)
 		bn = n;
-	/* m, t(n+2), x, acc, tmp, one, rr(2n+1), base(bn), 16-entry table */
-	mem = ln_alloc((size_t)(n + (n + 2) + 5 * n + (2 * n + 1) + bn + 16 * n) * sizeof(limb));
+	/* m, t(2n+2), x, acc, tmp, one, rr(2n+1), base(bn), 16-entry table */
+	mem = ln_alloc((size_t)(n + (2 * n + 2) + 5 * n + (2 * n + 1) + bn + 16 * n) * sizeof(limb));
 	if (!mem)
 		return LN_ENOMEM;
 	M.n = n;
 	M.m = mem;
 	M.t = M.m + n;
-	x = M.t + n + 2;
+	x = M.t + 2 * n + 2;
 	acc = x + n;
 	tmp = acc + n;
 	one = tmp + n;
@@ -215,7 +243,7 @@ int ln_bn_modexp(u8 *out, const u8 *base, size_t blen, const u8 *exp, size_t ele
 			unsigned w = nib ? (exp[ei] & 15) : (exp[ei] >> 4);
 			int k;
 			for (k = 0; k < 4; k++)
-				mont_mul(&M, acc, acc, acc);
+				mont_sqr(&M, acc, acc);
 			if (w)
 				mont_mul(&M, acc, acc, tab + w * n);
 		}
@@ -224,7 +252,7 @@ int ln_bn_modexp(u8 *out, const u8 *base, size_t blen, const u8 *exp, size_t ele
 	/* out of Montgomery form */
 	mont_mul(&M, acc, acc, one);
 	to_bytes(out, olen, acc, n);
-	ln_wipe(mem, (size_t)(n + (n + 2) + 5 * n + (2 * n + 1) + bn + 16 * n) * sizeof(limb));
+	ln_wipe(mem, (size_t)(n + (2 * n + 2) + 5 * n + (2 * n + 1) + bn + 16 * n) * sizeof(limb));
 	ln_free(mem);
 	return r;
 }
