@@ -42,7 +42,17 @@ fi
 cmds=$extra/cmds
 largs=""
 [ -n "$lang" ] && largs="LANGUAGE=$lang"
-echo "prefs|DH0:C/LagoonPrefs $largs DEBUG" > "$cmds"
+# assign with AssignLock() first: the harness's Assign lines do not take
+# effect on the AROS ROM here (ENV: requester otherwise)
+VBCC=${VBCC:-/opt/amiga/vbcc}
+PATH=$VBCC/bin:$PATH VBCC=$VBCC "$VBCC/bin/vc" +aos68k -O2 -I/opt/amiga/ndk/Include_H -o "$extra/C/tassign" \
+	"$here/tassign.c" -lamiga || { echo "FAIL: cannot build tassign"; exit 1; }
+{
+	echo "as1|DH0:C/tassign ENV DH0:ENV"
+	echo "as2|DH0:C/tassign ENVARC DH0:ENVARC"
+	echo "as3|DH0:C/tassign T DH0:T"
+	echo "prefs|DH0:C/LagoonPrefs $largs DEBUG"
+} > "$cmds"
 # FS-UAE turns the cursor keys into a joystick unless told otherwise
 fx="joystick_port_1 = none"
 [ "$mode" = ntsc ] && fx="$fx
@@ -62,7 +72,7 @@ while [ $t -lt 1800 ] && ! pgrep -f "fs-uae $out/emu/lagoon-emu" >/dev/null; do
 done
 python3 "$top/tests/servers/mdns/responder.py" --mcast 192.168.78.1 --addr 192.168.78.1 > "$out/responder.log" 2>&1 &
 rpid=$!
-nbdir=$(mktemp -d "$S/lagoon-prefs-nb.XXXXXX")
+nbdir=$(mktemp -d /tmp/lgnb.XXXXXX)      # short: nmbd's socket paths have a length limit
 nbpid=
 if command -v nmbd >/dev/null 2>&1; then
 	mkdir -p "$nbdir/nmbd"
