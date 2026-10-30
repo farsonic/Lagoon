@@ -181,7 +181,7 @@ U_nità
 ; _Device
 ;
 MSG_VOLLABEL
-E_tichetta volume
+E_tichetta
 ; Volume la_bel
 ;
 MSG_AUTOMOUNT
@@ -209,7 +209,7 @@ _GID
 ; _GID
 ;
 MSG_CLEARTEXT
-Consenti password in c_hiaro
+Password in c_hiaro
 ; Allow clear-te_xt password
 ;
 MSG_URL

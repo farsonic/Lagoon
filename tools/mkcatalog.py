@@ -142,9 +142,37 @@ def check_keys(where, st):
     return bad
 
 
+def width8(s):
+    return 8 * len(s.replace("_", ""))
+
+
+def check_layout(where, st):
+    """topaz 8 estimate of the main and editor window widths (the same
+    arithmetic as lagoonprefs.c and editor.c): must fit a 640 pixel screen"""
+    g = lambda n: st.get(n, "")
+    row1 = sum(width8(g(n)) + 16 + 6 for n in ("MSG_ADD", "MSG_EDIT", "MSG_REMOVE", "MSG_BROWSE"))
+    row1 += max(width8(g("MSG_MOUNT")), width8(g("MSG_UNMOUNT"))) + 16 + 6
+    main_w = max(64 * 8 + 24, row1) + 16
+    left = ("MSG_PROTOCOL MSG_SERVER MSG_SHARE_SMB MSG_SHARE_AFP MSG_SHARE_NFS MSG_FOLDER MSG_USER "
+            "MSG_PASSWORD MSG_DOMAIN MSG_URL").split()
+    lw1 = max(width8(g(n)) for n in left) + 16
+    fw1 = max(max(width8(g(n)) for n in ("MSG_PROTO_SMB", "MSG_PROTO_AFP", "MSG_PROTO_NFS")) + 40, 26 * 8)
+    lw2 = max(width8(g(n)) for n in ("MSG_DEVICE", "MSG_VOLLABEL", "MSG_UID", "MSG_GID")) + 16
+    cbw = 26 + 8 + max(width8(g(n)) for n in ("MSG_AUTOMOUNT", "MSG_READONLY", "MSG_SIGN", "MSG_ENCRYPT",
+                                               "MSG_CLEARTEXT"))
+    ed_w = 8 + lw1 + fw1 + 16 + max(lw2 + 12 * 8, cbw) + 8
+    bad = 0
+    for name, w in (("main window", main_w), ("share editor", ed_w)):
+        if w > 640 - 8:
+            print("%s: %s is %d pixels wide with topaz 8 (at most 632)" % (where, name, w))
+            bad += 1
+    return bad
+
+
 def check(cd, cts):
     e = read_cd(cd)
     bad = check_keys(cd, {n: t for n, _, t in e})
+    bad += check_layout(cd, {n: t for n, _, t in e})
     for ct in cts:
         meta, st = read_ct(ct)
         for k in ("language", "version"):
@@ -168,6 +196,7 @@ def check(cd, cts):
                     print("%s: %s: not ISO-8859-1" % (ct, name))
                     bad += 1
         bad += check_keys(ct, st)
+        bad += check_layout(ct, st)
         for name in st:
             if name not in [x[0] for x in e]:
                 print("%s: unknown %s" % (ct, name))

@@ -302,9 +302,9 @@ static void layout(void)
 	/* row 1: Add, Edit, Remove, Mount/Unmount, Browse; widths by label */
 	w1 = 0;
 	for (i = 0; i < 5; i++) {
-		bw = lp_textw(btn_label(btn_ids[i])) + 3 * lp_cw;
+		bw = lp_textw(btn_label(btn_ids[i])) + 2 * lp_cw;
 		if (btn_ids[i] == G_MOUNT && lp_textw(S(MSG_UNMOUNT)) > lp_textw(S(MSG_MOUNT)))
-			bw = lp_textw(S(MSG_UNMOUNT)) + 3 * lp_cw;
+			bw = lp_textw(S(MSG_UNMOUNT)) + 2 * lp_cw;
 		w1 += bw + 6;
 	}
 	inner_w = LN_MAX(list_w, w1) + 16;
@@ -356,9 +356,9 @@ static int build(void)
 	/* row 1, spread over the width */
 	tw = 0;
 	for (i = 0; i < 5; i++) {
-		w[i] = lp_textw(btn_label(btn_ids[i])) + 3 * lp_cw;
+		w[i] = lp_textw(btn_label(btn_ids[i])) + 2 * lp_cw;
 		if (btn_ids[i] == G_MOUNT && lp_textw(S(MSG_UNMOUNT)) > lp_textw(S(MSG_MOUNT)))
-			w[i] = lp_textw(S(MSG_UNMOUNT)) + 3 * lp_cw;
+			w[i] = lp_textw(S(MSG_UNMOUNT)) + 2 * lp_cw;
 		tw += w[i];
 	}
 	spare = inner_w - 16 - tw;

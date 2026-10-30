@@ -181,7 +181,7 @@ U_nidad
 ; _Device
 ;
 MSG_VOLLABEL
-_Etiqueta del volumen
+_Etiqueta
 ; Volume la_bel
 ;
 MSG_AUTOMOUNT
@@ -209,7 +209,7 @@ _GID
 ; _GID
 ;
 MSG_CLEARTEXT
-Permitir contraseña en te_xto plano
+Contraseña sin ci_frar
 ; Allow clear-te_xt password
 ;
 MSG_URL

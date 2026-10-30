@@ -371,7 +371,7 @@ static void layout(void)
 	fw1 = LN_MAX(maxw(cyc, 3) + 5 * lp_cw, 26 * lp_cw);
 	lbw = lp_textw(S(MSG_LIST)) + 2 * lp_cw;
 	lw2 = maxw(right, LN_ARRAY_SIZE(right)) + 2 * lp_cw;
-	fw2 = 15 * lp_cw;
+	fw2 = 12 * lp_cw;
 	cbw = 26 + lp_cw + maxw(cbs, LN_ARRAY_SIZE(cbs));
 	x0 = lp_scr->WBorLeft + 8;
 	x2 = x0 + lw1 + fw1 + 2 * lp_cw;

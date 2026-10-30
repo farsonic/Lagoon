@@ -105,47 +105,61 @@ shot() { $ptr stable 2 90 >/dev/null || fail "screen did not settle before $1"; 
 
 # boot + Riptide + window
 sleep 25
-shot 01-main
-key Down
-shot 02-main-selected
-key e
-shot 03-editor-smb
-key Escape
-sleep 1
-key Down Down
-key e
-shot 03b-editor-nfs
-key Escape
-sleep 1
-# a new share by hand
-key a
-sleep 2
-key v
-typ 192.168.78.1
-key Return h
-typ Music
-key Return e
-typ alice
-key Return w
-typ lagoon-test-pw
-key Return
-key u
-shot 04-editor-new
-key o
-sleep 1
-shot 05-main-added
-# browse: mDNS + NetBIOS take ~5 s
-key b
-sleep 8
-shot 06-browse
-key Down Down
-shot 06b-browse-selected
-key Return
-sleep 3
-shot 07-editor-from-browse
-key Escape
-sleep 1
-key s
+if [ -n "$lang" ]; then
+	# a translation: main window and editor (Return/Esc work in every language)
+	shot 01-main-$lang
+	key Down Return
+	shot 02-editor-$lang
+	key Escape
+	sleep 1
+	key Down Down Return
+	shot 03-editor-nfs-$lang
+	key Escape
+	sleep 1
+	key Escape
+else
+	shot 01-main
+	key Down
+	shot 02-main-selected
+	key e
+	shot 03-editor-smb
+	key Escape
+	sleep 1
+	key Down Down
+	key e
+	shot 03b-editor-nfs
+	key Escape
+	sleep 1
+	# a new share by hand
+	key a
+	sleep 2
+	key v
+	typ 192.168.78.1
+	key Return h
+	typ Music
+	key Return e
+	typ alice
+	key Return w
+	typ lagoon-test-pw
+	key Return
+	key u
+	shot 04-editor-new
+	key o
+	sleep 1
+	shot 05-main-added
+	# browse: mDNS + NetBIOS take ~5 s
+	key b
+	sleep 8
+	shot 06-browse
+	key Down Down
+	shot 06b-browse-selected
+	key Return
+	sleep 3
+	shot 07-editor-from-browse
+	key Escape
+	sleep 1
+	key s
+fi
 t=0
 while [ $t -lt 60 ] && kill -0 $epid 2>/dev/null; do sleep 1; t=$((t + 1)); done
 wait $epid
@@ -154,6 +168,12 @@ cleanup
 [ -n "$work" ] || { fail "no emulator work dir"; cat "$out/run_emu.log"; exit 1; }
 conf=$work/dh0/ENVARC/Lagoon/lagoon.conf
 cp "$conf" "$out/lagoon.conf" 2>/dev/null
+if [ -n "$lang" ]; then
+	cmp -s "$conf" "$extra/ENVARC/Lagoon/lagoon.conf" || fail "Cancel changed lagoon.conf"
+	echo "output: $out (emulator work dir $work)"
+	[ $fails -eq 0 ] && echo "ok   LagoonPrefs on the emulator ($mode, $lang)"
+	exit $fails
+fi
 grep -q 'name="Music" url="smb://192.168.78.1/Music" user="alice" pass="~' "$conf" || fail "new share not saved: $(cat "$conf")"
 grep -q 'lagoon-test-pw' "$conf" && fail "password in clear text"
 grep -q 'colour="blue"' "$conf" || fail "unknown option lost"

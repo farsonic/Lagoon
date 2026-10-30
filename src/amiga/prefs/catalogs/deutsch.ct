@@ -209,7 +209,7 @@ G_ID
 ; _GID
 ;
 MSG_CLEARTEXT
-_Klartext-Passwort erlauben
+_Klartext-Passwort
 ; Allow clear-te_xt password
 ;
 MSG_URL

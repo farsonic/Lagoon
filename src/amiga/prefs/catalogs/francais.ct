@@ -209,7 +209,7 @@ GI_D
 ; _GID
 ;
 MSG_CLEARTEXT
-Mot de passe en _clair autorisé
+Mot de passe en _clair
 ; Allow clear-te_xt password
 ;
 MSG_URL
