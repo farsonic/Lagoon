@@ -86,6 +86,23 @@ typedef struct Handler {
 
 static Handler *G;
 
+#ifdef HDEBUG
+/* debug builds: trace start-up steps into T:lagoon-debug */
+static void mark(const char *s)
+{
+	BPTR fh = Open((STRPTR)"T:lagoon-debug", MODE_READWRITE);
+	if (fh) {
+		Seek(fh, 0, OFFSET_END);
+		Write(fh, (APTR)s, (LONG)strlen(s));
+		Write(fh, (APTR)"\n", 1);
+		Close(fh);
+	}
+}
+#define MARK(s) mark(s)
+#else
+#define MARK(s) ((void)0)
+#endif
+
 static int  startup(struct DosPacket *pkt);
 static void serve(void);
 static void shutdown(void);
@@ -99,11 +116,15 @@ LONG handler_main(void)
 	struct DosPacket *pkt;
 	SysBase = *(struct ExecBase **)4L;
 	me = (struct Process *)FindTask(NULL);
+	/* never put up "insert volume" requesters: nobody may be watching,
+	 * and they would block every packet for this volume */
+	me->pr_WindowPtr = (APTR)-1;
 	WaitPort(&me->pr_MsgPort);
 	msg = GetMsg(&me->pr_MsgPort);
 	pkt = (struct DosPacket *)msg->mn_Node.ln_Name;
 	DOSBase = (struct DosLibrary *)OpenLibrary((STRPTR)"dos.library", 37);
 	UtilityBase = OpenLibrary((STRPTR)"utility.library", 37);
+	MARK("handler_main");
 	if (!DOSBase || !UtilityBase || !startup(pkt)) {
 		/* startup() replied the packet (or we cannot even do that) */
 		if (UtilityBase)
@@ -667,7 +688,9 @@ static int startup(struct DosPacket *pkt)
 	g->mounted = ln_time_unix();
 	if (g->dn)
 		bstr(g->dn->dn_Name, g->device, sizeof(g->device));
+	MARK("find_share");
 	r = find_share(pkt->dp_Arg2);
+	MARK(r == LN_OK ? "share ok" : "share failed");
 	if (r == LN_OK && ln_log_level > 0) {
 		ln_snprintf(g->logname, sizeof(g->logname), "T:lagoon-%s.log", g->share.name[0] ? g->share.name : g->device);
 		ln_log_file = g->logname;
@@ -675,6 +698,7 @@ static int startup(struct DosPacket *pkt)
 	LN_LOG(1, "lagoon-handler starting for %s: (%s)", g->device, g->share.url);
 	if (r == LN_OK)
 		r = ln_net_init();
+	MARK("net init done");
 	if (r == LN_OK) {
 		cr = ln_alloc(sizeof(LnCreds));
 		if (!cr)
@@ -688,6 +712,7 @@ static int startup(struct DosPacket *pkt)
 			ln_free(cr);
 		}
 	}
+	MARK(r == LN_OK ? "mounted" : "mount failed");
 	if (r != LN_OK) {
 		LN_LOG(0, "mount of %s failed: %s", g->share.url, ln_strerror(r));
 		if (g->mi)
@@ -721,8 +746,10 @@ static int startup(struct DosPacket *pkt)
 	if (g->dn)
 		g->dn->dn_Task = g->port;
 	reply(pkt, DOSTRUE, 0);
+	MARK("replied");
 	/* after replying: DOS may hold the DOS list while it waits for us */
 	add_volume(vn);
+	MARK("volume added");
 	timer_open();
 	LN_LOG(1, "mounted %s as %s: (volume %s:)", g->share.url, g->device, vn);
 	return 1;

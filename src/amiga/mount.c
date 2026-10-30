@@ -19,9 +19,15 @@ int ln_amiga_load_conf(LnConf *c)
 {
 	static const char *const files[] = { "ENV:Lagoon/lagoon.conf", "ENVARC:Lagoon/lagoon.conf" };
 	int i, line = 0, r = LN_OK;
+	struct Process *me = (struct Process *)FindTask(NULL);
+	APTR win = me->pr_WindowPtr;
 	ln_conf_init(c);
 	for (i = 0; i < 2; i++) {
-		BPTR fh = Open((STRPTR)files[i], MODE_OLDFILE);
+		BPTR fh;
+		/* no "insert volume ENV:" requester if the assign is missing */
+		me->pr_WindowPtr = (APTR)-1;
+		fh = Open((STRPTR)files[i], MODE_OLDFILE);
+		me->pr_WindowPtr = win;
 		LONG len;
 		char *t;
 		if (!fh)
@@ -165,12 +171,12 @@ int ln_amiga_mount(const LnShare *share, const char *device, char *devout, size_
 		err_set(err, errn, "bad device name \"%s\"%s", device ? device : share->name, "");
 		return LN_EINVAL;
 	}
-	if (find_dev(dev, LDF_DEVICES | LDF_ASSIGNS)) {
-		err_set(err, errn, "device %s: already exists%s", dev, "");
-		return LN_EEXIST;
-	}
 	if (share->name[0] && ln_amiga_find_mount(share->name, other, sizeof(other))) {
 		err_set(err, errn, "%s is already mounted as %s:", share->name, other);
+		return LN_EEXIST;
+	}
+	if (find_dev(dev, LDF_DEVICES | LDF_ASSIGNS)) {
+		err_set(err, errn, "device %s: already exists%s", dev, "");
 		return LN_EEXIST;
 	}
 	mi = AllocVec(sizeof(LnMountInfo), MEMF_PUBLIC | MEMF_CLEAR);
