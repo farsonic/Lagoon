@@ -42,16 +42,7 @@ fi
 cmds=$extra/cmds
 largs=""
 [ -n "$lang" ] && largs="LANGUAGE=$lang"
-# the ROM's Assign fails in the harness: assign with a helper first
-VBCC=${VBCC:-/opt/amiga/vbcc}
-PATH=$VBCC/bin:$PATH VBCC=$VBCC "$VBCC/bin/vc" +aos68k -O2 -I/opt/amiga/ndk/Include_H -o "$extra/C/tassign" \
-	"$here/tassign.c" -lamiga || { echo "FAIL: cannot build tassign"; exit 1; }
-{
-	echo "as1|DH0:C/tassign ENV DH0:ENV"
-	echo "as2|DH0:C/tassign ENVARC DH0:ENVARC"
-	echo "as3|DH0:C/tassign T DH0:T"
-	echo "prefs|DH0:C/LagoonPrefs $largs DEBUG"
-} > "$cmds"
+echo "prefs|DH0:C/LagoonPrefs $largs DEBUG" > "$cmds"
 # FS-UAE turns the cursor keys into a joystick unless told otherwise
 fx="joystick_port_1 = none"
 [ "$mode" = ntsc ] && fx="$fx
