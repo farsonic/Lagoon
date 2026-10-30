@@ -293,3 +293,58 @@ int ln_udp_broadcast(LnSock *s, int on)
 	LONG v = on;
 	return setsockopt(s->fd, SOL_SOCKET, SO_BROADCAST, &v, sizeof(v)) < 0 ? map_errno(Errno()) : LN_OK;
 }
+
+/* ---- nfs: connect from a reserved port (1023 downwards to 600) ---- */
+int ln_tcp_connect_reserved(const char *host, u16 port, int timeout_ms, LnSock **out)
+{
+	LnAddr a[4];
+	int n = ln_resolve(host, a, 4), i, lport, last = LN_EACCES;
+	if (n < 0) return n;
+	for (i = 0; i < n; i++) {
+		a[i].port = port;
+		for (lport = 1023; lport >= 600; lport--) {
+			struct sockaddr_in sa, ls;
+			LONG fd, one = 1, zero = 0, r, e;
+			to_sin(&a[i], &sa);
+			memset(&ls, 0, sizeof(ls));
+			ls.sin_len = sizeof(ls);
+			ls.sin_family = AF_INET;
+			ls.sin_port = (u16)lport;
+			fd = socket(AF_INET, SOCK_STREAM, 0);
+			if (fd < 0) return map_errno(Errno());
+			setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one));
+			if (bind(fd, (struct sockaddr *)&ls, sizeof(ls)) < 0) {
+				e = Errno();
+				CloseSocket(fd);
+				if (e == 13 || e == 1) return LN_EACCES;      /* EACCES / EPERM */
+				continue;                                     /* in use */
+			}
+			IoctlSocket(fd, FIONBIO, (char *)&one);
+			r = connect(fd, (struct sockaddr *)&sa, sizeof(sa));
+			if (r < 0) {
+				e = Errno();
+				if (e == 36 || e == 35) {                     /* EINPROGRESS / EWOULDBLOCK */
+					LONG err = 0, el = sizeof(err);
+					r = wait_fd(fd, 1, timeout_ms);
+					if (r == LN_OK) {
+						getsockopt(fd, SOL_SOCKET, SO_ERROR, &err, &el);
+						if (err == 48 || err == 49) { CloseSocket(fd); continue; }
+						r = err ? map_errno(err) : LN_OK;
+					}
+				} else if (e == 48 || e == 49) {              /* EADDRINUSE / EADDRNOTAVAIL */
+					CloseSocket(fd);
+					continue;
+				} else
+					r = map_errno(e);
+			}
+			if (r != LN_OK) { CloseSocket(fd); last = (int)r; break; }
+			IoctlSocket(fd, FIONBIO, (char *)&zero);
+			setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
+			*out = ln_alloc(sizeof(LnSock));
+			if (!*out) { CloseSocket(fd); return LN_ENOMEM; }
+			(*out)->fd = fd;
+			return LN_OK;
+		}
+	}
+	return last;
+}

@@ -1,0 +1,41 @@
+# Lagoon NFS test server: nfs-ganesha, FSAL VFS, NFSv3 over TCP only, on
+# non-default ports (NFS @PORT@, MOUNT @MNTPORT@). @DIR@ is replaced by the
+# test's temporary directory (tests/servers/nfs/ganesha.sh).
+# SPDX-License-Identifier: GPL-2.0-only
+NFS_CORE_PARAM {
+	NFS_Port = @PORT@;
+	MNT_Port = @MNTPORT@;
+	NLM_Port = @NLMPORT@;
+	Rquota_Port = @RQPORT@;
+	Protocols = 3;
+	Enable_NLM = false;
+	Enable_RQUOTA = false;
+	Enable_UDP = false;
+	Bind_addr = 0.0.0.0;
+}
+NFS_KRB5 { Active_krb5 = false; }
+NFSV4 { RecoveryBackend = fs; RecoveryRoot = "@DIR@/recov"; Graceless = true; }
+CACHEINODE { Dir_Chunk = 0; }
+EXPORT {
+	Export_Id = 1;
+	Path = "@DIR@/export";
+	Pseudo = "@DIR@/export";
+	Protocols = 3;
+	Transports = TCP;
+	Access_Type = RW;
+	Squash = No_Root_Squash;
+	SecType = sys;
+	FSAL { Name = VFS; }
+}
+EXPORT {
+	Export_Id = 2;
+	Path = "@DIR@/ro";
+	Pseudo = "@DIR@/ro";
+	Protocols = 3;
+	Transports = TCP;
+	Access_Type = RO;
+	Squash = Root_Squash;
+	SecType = sys;
+	FSAL { Name = VFS; }
+}
+LOG { Default_Log_Level = EVENT; }
