@@ -237,4 +237,14 @@ the connection until `reconnect()`), `refuse=K` (K failed reconnects),
 `stale=1` (open files do not survive a reconnect).
 
     make test                       # t_hcore: 3000+ checks
-    tests/amiga/t_handler.sh        # emulator, as root; SMB_URL=... adds a Samba run
+    tests/amiga/t_handler.sh        # emulator, as root
+    NET_URL=afp://... MEM_TESTS=0 tests/amiga/t_handler.sh   # a real server as NET:
+
+The emulator test uses `tests/amiga/t_handler_tool.c` (built by the
+script) for checks with stable output: Examine/ExNext and ExAll listings
+with protection, dates and comments, Info, path parsing, Seek and
+SetFileSize, lock conflicts, DupLockFromFH/NameFromFH/OpenFromLock/
+ChangeMode, SetFileDate; and `t_handler_assign.c` because the assigns of
+the AROS ROM boot did not work. The other steps use the AROS commands
+(Copy, Dir, MakeDir, Rename, Delete, Protect, Filenote, Type, Relabel,
+Execute) and C:Lagoon itself.

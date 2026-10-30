@@ -20,8 +20,10 @@ Mounts a share from lagoon.conf by name, or an ad-hoc URL:
     Lagoon MOUNT NAS
     Lagoon MOUNT smb://bob@nas.local/Public PASSWORD secret AS PUB: VOLUME Public
     Lagoon MOUNT afp://imac.local/Shared READONLY
-    Lagoon MOUNT nfs://server/srv/data?uid=1000&gid=1000
+    Lagoon MOUNT "nfs://server/srv/data?uid=1000&gid=1000"
 
+- Put a URL in double quotes when it contains `=` (options such as
+  `?uid=1000`): ReadArgs would take `name=value` as a keyword otherwise.
 - The device is the share's name (`NAS:`), `AS` chooses another; ad-hoc
   URLs get the first free `LGN0:`, `LGN1:` ...
 - The volume label is the share's `volume=` (or `VOLUME`), else the share

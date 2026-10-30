@@ -1,8 +1,11 @@
 #!/bin/sh
 # Lagoon - lagoon-handler + C:Lagoon on the emulated A1200 (run_emu.sh),
 # against the in-memory backend (mem://, no server needed) and, with
-# SMB_URL set (e.g. smb://lagoon:lagoon-test-pw@192.168.78.1/lagoon), a
-# real server too.
+# NET_URL set, a real server too, mounted as NET: (start it yourself, e.g.
+#   smb://lagoon:lagoon-test-pw@192.168.78.1/lagoon
+#   afp://lagoon:lagoon-test-pw@192.168.78.1/lagoon
+#   nfs://192.168.78.1/DIR/export?uid=0&gid=0 ).
+# MEM_TESTS=0 skips the mem part.
 #
 #   tests/amiga/t_handler.sh            (needs root, like run_emu.sh)
 #
@@ -44,13 +47,15 @@ share name="MEM" url="mem://test/vol?seed=1&many=300" volume="MemVol"
 share name="AUTO" url="mem://test/auto?seed=1" automount=yes
 option loglevel=1
 CONF
-SMB_URL=${SMB_URL:-}
+NET_URL=${NET_URL:-${SMB_URL:-}}
 cmds=$x/cmds
 cat > "$cmds" <<'CMDS'
 as1|t_handler_assign T: DH0:T
 as2|t_handler_assign ENV: DH0:ENV
 as3|t_handler_assign ENVARC: DH0:ENVARC
 as4|t_handler_assign L: DH0:L ADD
+CMDS
+[ "${MEM_TESTS:-1}" != 0 ] && cat >> "$cmds" <<'CMDS'
 a01_mount|Lagoon MOUNT MEM
 a02_mountdup|Lagoon MOUNT MEM
 a03_ls|t_handler_tool ls MEM:
@@ -108,12 +113,12 @@ b04_rodel|Delete RO:ReadMe.txt
 b05_rounmount|Lagoon UNMOUNT RO:
 b06_badauth|Lagoon MOUNT "mem://test/auth?pass=secret" AS BAD: PASSWORD wrong
 b07_badgone|Lagoon STATUS BAD:
-b08_goodauth|Lagoon MOUNT "mem://user:secret@test/auth?pass=secret" AS GOOD:
+b08_goodauth|Lagoon MOUNT "mem://user:secret@test/auth?pass=secret&seed=1" AS GOOD:
 b09_goodtype|Type GOOD:ReadMe.txt
 b09_goodstat|Lagoon STATUS GOOD:
 b10_goodun|Lagoon UNMOUNT GOOD:
 b11_url|Lagoon MOUNT "mem://test/adhoc?seed=1"
-b12_urltype|Type" LGN0:ReadMe.txt
+b12_urltype|Type LGN0:ReadMe.txt
 b13_urlun|Lagoon UNMOUNT LGN0:
 c01_drop|Lagoon MOUNT "mem://test/drop?seed=1&dropevery=20" AS DROP:
 c02_dropin|Copy DH0:data/big.bin DROP:big
@@ -121,7 +126,7 @@ c03_dropout|Copy DROP:big DH0:data/drop.back
 c04_dropls|t_handler_tool ls DROP:
 c05_dropstat|Lagoon STATUS DROP:
 c06_dropun|Lagoon UNMOUNT DROP:
-c07_down|Lagoon MOUNT "mem://test/down?seed=1&dropevery=12&refuse=1000000" AS DOWN:
+c07_down|Lagoon MOUNT "mem://test/down?seed=1&dropevery=3&refuse=1000000" AS DOWN:
 c08_downls|t_handler_tool ls DOWN:
 c09_downls2|t_handler_tool ls DOWN:
 c10_downstat|Lagoon STATUS DOWN:
@@ -131,29 +136,29 @@ d03_mountall2|Lagoon MOUNTALL
 d04_list|Lagoon LIST
 d05_un|Lagoon UNMOUNT AUTO:
 CMDS
-if [ -n "$SMB_URL" ]; then
+if [ -n "$NET_URL" ]; then
 	cat >> "$cmds" <<CMDS
-s01_mount|Lagoon MOUNT "$SMB_URL" AS SMB:
-s02_info|t_handler_tool info SMB:
-s03_copyin|Copy DH0:data/big.bin SMB:lagoon-big.bin
-s04_copyout|Copy SMB:lagoon-big.bin DH0:data/smb.back
-s05_mkdir|MakeDir SMB:lagoon-dir
-s06_copy|Copy DH0:data/small.txt SMB:lagoon-dir/small.txt
-s07_rename|Rename SMB:lagoon-dir/small.txt SMB:lagoon-dir/Renamed.txt
-s08_delne|Delete SMB:lagoon-dir
-s09_note|Filenote SMB:lagoon-dir/Renamed.txt "smb note"
-s10_date|t_handler_tool setdate SMB:lagoon-dir/Renamed.txt
-s11_ls|t_handler_tool ls SMB:lagoon-dir
-s12_case|Type SMB:LAGOON-DIR/renamed.TXT
-s13_dirall|Dir SMB: ALL
-s13_exall|t_handler_tool exall SMB:
-s13_seek|t_handler_tool seek SMB:lagoon-dir/seek.bin
-s13_locks|t_handler_tool locks SMB:lagoon-dir/seek.bin
-s13_fh|t_handler_tool fh SMB:lagoon-dir/fh.txt
-s14_status|Lagoon STATUS SMB:
-s15_del|Delete SMB:lagoon-dir ALL
-s16_del2|Delete SMB:lagoon-big.bin
-s17_un|Lagoon UNMOUNT SMB:
+s01_mount|Lagoon MOUNT "$NET_URL" AS NET:
+s02_info|t_handler_tool info NET:
+s03_copyin|Copy DH0:data/big.bin NET:lagoon-big.bin
+s04_copyout|Copy NET:lagoon-big.bin DH0:data/net.back
+s05_mkdir|MakeDir NET:lagoon-dir
+s06_copy|Copy DH0:data/small.txt NET:lagoon-dir/small.txt
+s07_rename|Rename NET:lagoon-dir/small.txt NET:lagoon-dir/Renamed.txt
+s08_delne|Delete NET:lagoon-dir
+s09_note|Filenote NET:lagoon-dir/Renamed.txt "smb note"
+s10_date|t_handler_tool setdate NET:lagoon-dir/Renamed.txt
+s11_ls|t_handler_tool ls NET:lagoon-dir
+s12_case|Type NET:LAGOON-DIR/renamed.TXT
+s13_dirall|Dir NET: ALL
+s13_exall|t_handler_tool exall NET:
+s13_seek|t_handler_tool seek NET:lagoon-dir/seek.bin
+s13_locks|t_handler_tool locks NET:lagoon-dir/seek.bin
+s13_fh|t_handler_tool fh NET:lagoon-dir/fh.txt
+s14_status|Lagoon STATUS NET:
+s15_del|Delete NET:lagoon-dir ALL
+s16_del2|Delete NET:lagoon-big.bin
+s17_un|Lagoon UNMOUNT NET:
 CMDS
 fi
 LAGOON_DH0_EXTRA=$x/dh0 tests/amiga/run_emu.sh "$cmds" "${EMU_TIMEOUT:-400}" build/amiga/Lagoon > "$x/emu.log" 2>&1
@@ -180,6 +185,7 @@ count() {   # count FILE REGEX N
 	if [ "${n:-0}" -eq "$3" ]; then ok; else bad "$1: $n lines match /$2/, expected $3"; fi
 }
 
+if [ "${MEM_TESTS:-1}" != 0 ]; then
 has a01_mount "Mounted MEM as MEM:"
 has a02_mountdup "already mounted"
 has a03_ls "examine MemVol type=1"
@@ -274,10 +280,11 @@ has d02_autols "ent sub\|dir"
 hasnt d03_mountall2 "cannot"
 has d04_list "AUTO +auto +AUTO:"
 has d05_un "Unmounted"
-if [ -n "$SMB_URL" ]; then
+fi
+if [ -n "$NET_URL" ]; then
 	has s01_mount "Mounted"
 	has s02_info "info volume="
-	same "$x/dh0/data/big.bin" "$work/dh0/data/smb.back"
+	same "$x/dh0/data/big.bin" "$work/dh0/data/net.back"
 	has s08_delne "not empty"
 	has s11_ls "ent Renamed.txt\|file\|11"
 	has s11_ls "2020-01-01 12:00"
