@@ -1,0 +1,430 @@
+; $VER: Install_Lagoon 0.1 (30.10.2026)
+;
+; Installer script for Lagoon, network file systems (SMB, AFP, NFS) for
+; AmigaOS 3.x (68020+). Written for the Commodore/Amiga Technologies
+; Installer V43 language (also InstallerLG and the AROS Installer); modelled
+; on Riptide's Install_Riptide (same author). It
+;
+;   * checks for a 68020+ and AmigaOS 3.0 (V39) or newer,
+;   * looks for a TCP/IP stack (Riptide, Roadshow, Miami, AmiTCP/Genesis,
+;     any bsdsocket.library) and warns when there is none,
+;   * copies L:lagoon-handler, C:Lagoon, SYS:Prefs/LagoonPrefs (+ icon),
+;     the locale catalogs and (optionally) the documentation,
+;   * creates ENVARC:Lagoon/ (an existing lagoon.conf is kept) and ENV:Lagoon/,
+;   * adds "Lagoon MOUNTALL WAIT 30 >NIL:" to S:User-Startup in a
+;     ";BEGIN Lagoon" block (appended, so after the TCP/IP stack's block),
+;   * can uninstall Lagoon again (locations kept in ENVARC:Lagoon/BinDir,
+;     DocDir, PrefsDir).
+;
+; SPDX-License-Identifier: GPL-2.0-only
+
+(set #version "0.1")
+(if (= @app-name "") (set @app-name "Lagoon"))
+
+; ---------------------------------------------------------------------------
+; Procedures
+; ---------------------------------------------------------------------------
+
+; #q quoted for AmigaDOS when it contains a space
+(procedure P_QUOTE #q
+  (if (patmatch "#?[ ]#?" #q) (cat "\"" #q "\"") #q))
+
+; Does directory #d name the same place as C:?
+(procedure P_IS_C #d
+  (if (= (exists #d (noreq)) 2)
+    (= (expandpath #d) (expandpath "C:"))
+    (OR (= #d "C:") (= #d "c:"))))
+
+; Read one of our ENV: records ("" when missing)
+(procedure P_GETREC #name
+  (if (= (exists (tackon "ENV:Lagoon" #name) (noreq)) 1)
+    (getenv (tackon "Lagoon" #name))
+    ""))
+
+; Store an install location in ENVARC:Lagoon/#name (and ENV:)
+(procedure P_PUTREC #name #val
+  (textfile (dest (tackon #envarc-dir #name)) (append #val))
+  (if #have-env
+    (textfile (dest (tackon "ENV:Lagoon" #name)) (append #val))))
+
+; Copy the catalogs of package drawer Catalogs/#from to LOCALE:Catalogs/#to
+(procedure P_CATALOG #from #to
+  (if (= (exists (tackon (tackon #pkg "Catalogs") #from) (noreq)) 2)
+  (
+    (if (NOT (= (exists (tackon "LOCALE:Catalogs" #to) (noreq)) 2))
+      (makedir (tackon "LOCALE:Catalogs" #to) (prompt "") (help @makedir-help)))
+    (copyfiles
+      (prompt "Copying the translations")
+      (help @copyfiles-help)
+      (source (tackon (tackon #pkg "Catalogs") #from))
+      (dest (tackon "LOCALE:Catalogs" #to))
+      (all)
+      (optional "force"))
+  )))
+
+; Delete one file if it exists, also when it is protected
+(procedure P_DEL #file
+  (if (= (exists #file (noreq)) 1)
+    (delete #file (optional "force") (infos))))
+
+; ---------------------------------------------------------------------------
+; Where is the package?
+; ---------------------------------------------------------------------------
+
+(set #pkg (pathonly @icon))
+(if (NOT (= (exists (tackon #pkg "C/Lagoon") (noreq)) 1))
+  (if (= (exists "C/Lagoon" (noreq)) 1)
+    (set #pkg "")))
+
+; ---------------------------------------------------------------------------
+; Environment and an earlier installation
+; ---------------------------------------------------------------------------
+
+(set #envarc "ENVARC:")
+(if (= (getassign "ENVARC" "a") "")
+  (set #envarc "SYS:Prefs/Env-Archive"))
+(set #envarc-dir (tackon #envarc "Lagoon"))
+(set #have-env (NOT (= (getassign "ENV" "a") "")))
+(set #conf-arc (tackon #envarc-dir "lagoon.conf"))
+
+(set #old-bin (P_GETREC "BinDir"))
+(set #old-doc (P_GETREC "DocDir"))
+(set #old-prefs (P_GETREC "PrefsDir"))
+(if (= #old-bin "") (set #old-bin "C:"))
+(if (= #old-prefs "")
+  (if (= (exists "SYS:Prefs/LagoonPrefs" (noreq)) 1) (set #old-prefs "SYS:Prefs")))
+(set #installed
+  (OR (= (exists (tackon #old-bin "Lagoon") (noreq)) 1)
+      (= (exists "L:lagoon-handler" (noreq)) 1)))
+
+(set #base @default-dest)
+(if (= #base "") (set #base "SYS:"))
+(set #drawer (tackon #base "Lagoon"))
+(if (NOT (= #old-doc "")) (set #drawer (pathonly #old-doc)))
+
+; ---------------------------------------------------------------------------
+; Welcome
+; ---------------------------------------------------------------------------
+
+(message
+  (cat "Lagoon " #version "\n\n"
+       "Network shares as Amiga volumes: SMB 2/3 (Windows, macOS, Samba "
+       "and NAS boxes), AFP (older Macs) and NFS (Unix and Linux), over any "
+       "TCP/IP stack.\n\n"
+       "Free software under the GNU General Public License version 2 "
+       "(Docs/LICENSE). It comes with ABSOLUTELY NO WARRANTY.\n\n"
+       "The installer copies the file system handler, the Lagoon command "
+       "and LagoonPrefs, and mounts your shares at boot.")
+  (all))
+
+(set #mode 1)   ; 1 = install, 0 = uninstall
+(if (OR (> @user-level 0) #installed)
+  (set #mode
+    (askbool
+      (prompt (if #installed
+                (cat "Lagoon is already installed (in " #old-bin ").\n\n"
+                     "Install (update) or remove it?")
+                "Install Lagoon, or remove an earlier installation?"))
+      (help (cat "Install copies Lagoon. Your share list "
+                 "(ENVARC:Lagoon/lagoon.conf) is always kept.\n\n"
+                 "Uninstall removes the programs and the documentation and "
+                 "empties the Lagoon block in S:User-Startup. The share list "
+                 "is only removed when you say so."))
+      (choices "Install" "Uninstall")
+      (default 1))))
+
+; ===========================================================================
+; Uninstall
+; ===========================================================================
+
+(if (= #mode 0)
+(
+  (if (= (exists (tackon #old-bin "Lagoon") (noreq)) 1)
+    (run (cat (P_QUOTE (tackon #old-bin "Lagoon")) " UNMOUNT ALL >NIL:")))
+  (set #rm-bin #old-bin)
+  (if (= @user-level 2)
+    (set #rm-bin
+      (askdir
+        (prompt "Directory that holds the Lagoon command:")
+        (help @askdir-help)
+        (default #rm-bin))))
+  (complete 10)
+  (P_DEL (tackon #rm-bin "Lagoon"))
+  (P_DEL "L:lagoon-handler")
+  (if (NOT (= #old-prefs ""))
+  (
+    (P_DEL (tackon #old-prefs "LagoonPrefs"))
+    (P_DEL (tackon #old-prefs "LagoonPrefs.info"))
+  ))
+  (foreach "LOCALE:Catalogs" "#?"
+    (
+      (P_DEL (tackon (tackon "LOCALE:Catalogs" @each-name) "LagoonPrefs.catalog"))
+      (P_DEL (tackon (tackon "LOCALE:Catalogs" @each-name) "Lagoon.catalog"))
+    ))
+  (complete 40)
+  (if (NOT (= #old-doc ""))
+  (
+    (P_DEL (tackon #old-doc "README.md"))
+    (P_DEL (tackon #old-doc "install.md"))
+    (P_DEL (tackon #old-doc "prefs.md"))
+    (P_DEL (tackon #old-doc "LICENSE"))
+    (P_DEL (tackon #old-doc "CREDITS.md"))
+    (P_DEL (tackon #old-doc "ReadMe"))
+    (if (= (exists #old-doc (noreq)) 2) (delete #old-doc (infos) (optional "nofail")))
+    (if (= (exists (pathonly #old-doc) (noreq)) 2)
+      (delete (pathonly #old-doc) (infos) (optional "nofail")))
+  ))
+  (complete 70)
+  ; Installer can only replace a ;BEGIN/;END block: it is left empty
+  (startup "Lagoon"
+    (prompt "Remove the Lagoon command from S:User-Startup?")
+    (help @startup-help)
+    (command ""))
+  (set #rm-conf 0)
+  (if (> @user-level 0)
+    (set #rm-conf
+      (askbool
+        (prompt (cat "Also delete your share list?\n\n" #conf-arc
+                     "\n(with the passwords you entered)"))
+        (help "Keep it if you plan to install Lagoon again.")
+        (default 0))))
+  (if #rm-conf
+  (
+    (P_DEL #conf-arc)
+    (P_DEL (tackon #envarc-dir "lagoon.conf.bak"))
+    (P_DEL "ENV:Lagoon/lagoon.conf")
+  ))
+  (P_DEL (tackon #envarc-dir "BinDir"))
+  (P_DEL (tackon #envarc-dir "DocDir"))
+  (P_DEL (tackon #envarc-dir "PrefsDir"))
+  (P_DEL "ENV:Lagoon/BinDir")
+  (P_DEL "ENV:Lagoon/DocDir")
+  (P_DEL "ENV:Lagoon/PrefsDir")
+  (if #rm-conf
+  (
+    (delete #envarc-dir (optional "nofail"))
+    (delete "ENV:Lagoon" (optional "nofail"))
+  ))
+  (complete 100)
+  (set @default-dest "")
+  (exit
+    (cat "Lagoon has been removed.\n\n"
+         (if #rm-conf "" (cat "Your share list is still in " #conf-arc ".\n"))
+         "Shares that were mounted stay mounted until you reboot."))
+))
+
+; ===========================================================================
+; Install
+; ===========================================================================
+
+; ---- system requirements --------------------------------------------------
+
+(set #cpu (database "cpu"))
+(if (OR (= #cpu "68000") (= #cpu "68010"))
+  (if (= @user-level 2)
+    (if (NOT (askbool
+               (prompt (cat "Lagoon needs a 68020 or better; this Amiga has a "
+                            #cpu ".\n\nInstall anyway?"))
+               (help "The programs will not run on this CPU.")
+               (default 0)))
+      (exit (quiet)))
+    (abort (cat "Lagoon needs a 68020 or better CPU. This Amiga has a "
+                #cpu "."))))
+(if (< (/ (getversion "exec.library" (resident)) 65536) 39)
+  (abort "Lagoon needs AmigaOS 3.0 (V39) or newer."))
+
+(if (NOT (= (exists (tackon #pkg "C/Lagoon") (noreq)) 1))
+  (set #pkg
+    (askdir
+      (prompt "Where is the Lagoon package (the drawer with Install_Lagoon and C/)?")
+      (help "Select the drawer you unpacked the Lagoon archive into.")
+      (default #pkg))))
+(if (NOT (= (exists (tackon #pkg "C/Lagoon") (noreq)) 1))
+  (abort (cat "Cannot find " (tackon #pkg "C/Lagoon") ". Start the installer "
+              "from the unpacked Lagoon drawer.")))
+
+; ---- TCP/IP stack ---------------------------------------------------------
+
+(set #stack "")
+(if (OR (getversion "riptide.library" (resident))
+        (= (exists "C:Riptide" (noreq)) 1)
+        (= (exists "ENVARC:Riptide" (noreq)) 2))
+  (set #stack "Riptide"))
+(if (= #stack "")
+  (if (OR (= (exists "C:AddNetInterface" (noreq)) 1)
+          (= (exists "DEVS:NetInterfaces" (noreq)) 2))
+    (set #stack "Roadshow")))
+(if (= #stack "")
+  (if (OR (NOT (= (getassign "Miami" "a") ""))
+          (= (exists "C:Miami" (noreq)) 1))
+    (set #stack "Miami")))
+(if (= #stack "")
+  (if (NOT (= (getassign "AmiTCP" "a") ""))
+    (set #stack "AmiTCP or Genesis")))
+(if (= #stack "")
+  (if (OR (getversion "bsdsocket.library" (resident))
+          (= (exists "LIBS:bsdsocket.library" (noreq)) 1))
+    (set #stack "a TCP/IP stack (bsdsocket.library)")))
+(if (= #stack "")
+  (message
+    (cat "No TCP/IP stack was found (Riptide, Roadshow, Miami, AmiTCP, "
+         "Genesis or a bsdsocket.library).\n\n"
+         "Lagoon needs one to reach your servers. Install a stack, for "
+         "example Riptide, before you mount shares. Lagoon is installed "
+         "anyway.")
+    (all)))
+
+; ---- where ----------------------------------------------------------------
+
+(set #bindir "C:")
+(if (= @user-level 2)
+  (set #bindir
+    (askdir
+      (prompt "Where should the Lagoon command go?")
+      (help (cat "C: is the usual place. lagoon-handler always goes to L:.\n\n"
+                 @askdir-help))
+      (default #old-bin)
+      (newpath))))
+
+(set #opts 3)   ; documentation + catalogs
+(if (> @user-level 0)
+  (set #opts
+    (askoptions
+      (prompt "Which parts of Lagoon should be installed?")
+      (help (cat "lagoon-handler (L:), the Lagoon command and LagoonPrefs "
+                 "(SYS:Prefs) are always installed.\n\n"
+                 "Documentation: README.md, install.md, prefs.md and the "
+                 "licence, in a drawer you choose.\n\n"
+                 "Translations: LagoonPrefs in German, French, Spanish and "
+                 "Italian (LOCALE:Catalogs). English is built in."))
+      (choices "Documentation" "Translations")
+      (default 3))))
+
+(if (IN #opts 0)
+  (if (> @user-level 0)
+    (set #drawer
+      (askdir
+        (prompt "Drawer for the Lagoon documentation:")
+        (help (cat "The documentation goes into Docs/ inside this drawer.\n\n"
+                   @askdir-help))
+        (default #drawer)
+        (newpath)))))
+(set #docdir (if (IN #opts 0) (tackon #drawer "Docs") ""))
+(set #prefsdir (if (= (exists "SYS:Prefs" (noreq)) 2) "SYS:Prefs" #bindir))
+
+; ---- copy -----------------------------------------------------------------
+
+(complete 10)
+(copyfiles
+  (prompt "Copying the Lagoon command")
+  (help "Lagoon mounts and unmounts shares: Lagoon MOUNT NAS, Lagoon LIST ...")
+  (source (tackon #pkg "C"))
+  (dest #bindir)
+  (choices "Lagoon")
+  (optional "force"))
+(copyfiles
+  (prompt "Copying the file system handler")
+  (help "lagoon-handler is started by AmigaDOS for every mounted share.")
+  (source (tackon #pkg "L"))
+  (dest "L:")
+  (choices "lagoon-handler")
+  (optional "force"))
+(complete 30)
+(copyfiles
+  (prompt "Copying LagoonPrefs")
+  (help "The share list editor, next to the system's preferences editors.")
+  (source (tackon #pkg "Prefs"))
+  (dest #prefsdir)
+  (choices "LagoonPrefs")
+  (infos)
+  (optional "force"))
+(if (AND (IN #opts 1) (= (exists (tackon #pkg "Catalogs") (noreq)) 2))
+(
+  ; the package uses ASCII drawer names; LOCALE: wants the language names
+  (P_CATALOG "deutsch" "deutsch")
+  (P_CATALOG "francais" "français")
+  (P_CATALOG "espanol" "español")
+  (P_CATALOG "italiano" "italiano")
+))
+(complete 50)
+(if (IN #opts 0)
+(
+  (if (NOT (= (exists #drawer (noreq)) 2))
+  (
+    (makedir #drawer (prompt "Creating the Lagoon drawer") (help @makedir-help))
+    (if (= (exists (cat #pkg ".info") (noreq)) 1)
+      (copyfiles (prompt "") (help "") (source (cat #pkg ".info"))
+                 (dest (pathonly #drawer)) (newname (cat (fileonly #drawer) ".info"))
+                 (optional "nofail")))
+  ))
+  (copyfiles
+    (prompt "Copying the documentation")
+    (help @copyfiles-help)
+    (source (tackon #pkg "Docs"))
+    (dest #docdir)
+    (all)
+    (infos)
+    (optional "force"))
+  (if (= (exists (tackon #pkg "Docs.info") (noreq)) 1)
+    (copyfiles (prompt "") (help "") (source (tackon #pkg "Docs.info"))
+               (dest #drawer) (optional "nofail")))
+))
+(complete 70)
+
+; ---- configuration: the share list is never replaced ----------------------
+
+(if (NOT (= (exists #envarc-dir (noreq)) 2))
+  (makedir #envarc-dir (prompt "Creating the configuration drawer") (help @makedir-help)))
+(if (NOT (= (exists #conf-arc (noreq)) 1))
+  (textfile
+    (prompt "Creating an empty share list")
+    (help "LagoonPrefs adds the shares.")
+    (dest #conf-arc)
+    (append "# Lagoon shares: edit them with SYS:Prefs/LagoonPrefs\n")))
+(if #have-env
+(
+  (if (NOT (= (exists "ENV:Lagoon" (noreq)) 2))
+    (makedir "ENV:Lagoon" (prompt "") (help @makedir-help)))
+  (if (NOT (= (exists "ENV:Lagoon/lagoon.conf" (noreq)) 1))
+    (copyfiles (prompt "") (help "") (source #conf-arc) (dest "ENV:Lagoon")
+               (optional "force")))
+))
+(P_PUTREC "BinDir" #bindir)
+(P_PUTREC "DocDir" #docdir)
+(P_PUTREC "PrefsDir" #prefsdir)
+(complete 80)
+
+; ---- mount at boot --------------------------------------------------------
+
+(set #lg-cmd (P_QUOTE (tackon #bindir "Lagoon")))
+(set #boot 1)
+(if (> @user-level 0)
+  (set #boot
+    (askbool
+      (prompt "Mount the shares marked \"Mount at startup\" when the Amiga boots?")
+      (help (cat "Adds \"" #lg-cmd " MOUNTALL WAIT 30 >NIL:\" to S:User-Startup, "
+                 "between the lines ;BEGIN Lagoon and ;END Lagoon. The block "
+                 "is added at the end, after your TCP/IP stack's own block; "
+                 "WAIT 30 gives the stack up to 30 seconds to come up."))
+      (default 1))))
+(if #boot
+  (startup "Lagoon"
+    (prompt (cat "Add this line to S:User-Startup so your shares are mounted at boot:\n\n"
+                 #lg-cmd " MOUNTALL WAIT 30 >NIL:"))
+    (help @startup-help)
+    (command (cat #lg-cmd " MOUNTALL WAIT 30 >NIL:\n"))))
+(complete 100)
+
+; ---- done -----------------------------------------------------------------
+
+(set @default-dest (if (IN #opts 0) #drawer #prefsdir))
+(exit
+  (cat "Lagoon " #version " is installed.\n\n"
+       "Add your shares with " (tackon #prefsdir "LagoonPrefs") ": Add, or "
+       "Browse network to find servers.\n\n"
+       "Command: " (tackon #bindir "Lagoon") "\n"
+       "Share list: " #conf-arc "\n"
+       (if (IN #opts 0) (cat "Manual: " (tackon #docdir "README.md") "\n") "")
+       (if #boot "Shares marked \"Mount at startup\" are mounted at boot.\n" "")
+       (if (= #stack "") "\nNo TCP/IP stack was found: install one first.\n"
+           (cat "\nTCP/IP stack: " #stack "\n"))))
