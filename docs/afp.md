@@ -200,16 +200,19 @@ tokens (FPGetSessionToken / FPDisconnectOldSession) are not used.
 `build/amiga/lncli` on the emulated A1200 (68020, 14 MHz, Riptide) against
 Netatalk 3.1.18 on 192.168.78.1:548 (`tests/amiga/run_emu.sh`): guest and
 DHX2 logins, `ls`, `df`, `shares`, `cat`, `mkdir`, `put`/`get` of 2 MB
-random files (byte-identical on the host), rename to a UTF-8 name, `touch`,
-`stat`, wrong password (`logon failed`), `rm`.
+random files (byte-identical on the host, both directions, guest and DHX2),
+rename to a UTF-8 name, `touch`, `stat`, wrong password (`logon failed`),
+`rm` of a non-empty directory (`directory not empty`).
 
-Measured (see the report in the commit log for the run):
+Measured (emulated A1200, 68020 at 14 MHz, 8 MB fast RAM, Riptide over uaenet):
 
-- DHX2 login: about RESULT_LOGIN on the 68020 (first version with 256-bit
-  exponents and plain Montgomery multiplication: 12.3 s; now 160-bit
-  exponent, dedicated squaring, no memmove, `mulu.l` inner loop). Guest
-  login is immediate.
-- Throughput: RESULT_THROUGHPUT.
+- DHX2 login: 5.2 s, of which 5.0 s are the two 1024-bit modular
+  exponentiations (the first version, with 256-bit exponents and plain
+  CIOS Montgomery multiplication, took 12.3 s; now 160-bit exponent,
+  dedicated squaring, no memmove, `mulu.l` inner loop). Faster CPUs scale
+  accordingly (a 68030/50 MHz should be near 1.5 s). Guest login: 20 ms.
+- Throughput with `lncli` (128 KB requests): read 450 KB/s, write
+  240 KB/s, the same for guest and DHX2 (AFP has no per-packet crypto).
 
 ## Not done / limits
 
