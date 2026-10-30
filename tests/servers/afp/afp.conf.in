@@ -1,0 +1,32 @@
+; SPDX-License-Identifier: GPL-2.0-only
+; Lagoon AFP tests - Netatalk 3 configuration (tests/servers/afp/netatalk.sh
+; fills in @DIR@ and @PORT@). Only for local testing.
+[Global]
+afp port = @PORT@
+afp listen = @LISTEN@
+uam list = uams_guest.so uams_dhx2.so uams_clrtxt.so
+guest account = nobody
+log file = @DIR@/afpd.log
+log level = default:@LOGLEVEL@
+zeroconf = no
+spotlight = no
+vol dbpath = @DIR@/db/$v/
+login message = Welcome to the Lagoon test server
+tickleval = 10
+timeout = 6
+
+[lagoon]
+path = @DIR@/vol
+cnid scheme = tdb
+file perm = 0664
+directory perm = 0775
+
+[readonly]
+path = @DIR@/ro
+cnid scheme = tdb
+read only = yes
+
+[secret]
+path = @DIR@/secret
+cnid scheme = tdb
+password = lagoonpw
