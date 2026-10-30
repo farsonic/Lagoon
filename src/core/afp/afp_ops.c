@@ -943,10 +943,9 @@ static int afp_remove(LnFs *fs, const char *path)
 	return afp_err(code);
 }
 
-static int afp_rename(LnFs *fs, const char *from, const char *to)
+static int do_rename(LnFs *fs, const char *from, const char *to, char *fp, char *tp, char *tdir, char *nfd)
 {
-	char fp[PATHMAX], tp[PATHMAX], tdir[PATHMAX], nfd[512];
-	AfpParams a, t;
+	AfpParams *a = (AfpParams *)(void *)(nfd + 512), *t = a + 1;
 	AfpBuf b;
 	s32 code;
 	int r;
@@ -954,16 +953,16 @@ static int afp_rename(LnFs *fs, const char *from, const char *to)
 		return r;
 	if (!fp[0] || !tp[0])
 		return LN_EINVAL;
-	if ((r = getparms(fs, fp, &a)) != 0)
+	if ((r = getparms(fs, fp, a)) != 0)
 		return r;
 	/* never overwrite; a case-only rename finds the same object */
-	r = getparms(fs, tp, &t);
-	if (r == LN_OK && !(t.nodeid && t.nodeid == a.nodeid))
+	r = getparms(fs, tp, t);
+	if (r == LN_OK && !(t->nodeid && t->nodeid == a->nodeid))
 		return LN_EEXIST;
 	if (r && r != LN_ENOENT)
 		return r;
-	ln_path_parent(tdir, sizeof(tdir), tp);
-	if (ln_utf8_nfd(ln_path_base(tp), nfd, sizeof(nfd)) < 0)
+	ln_path_parent(tdir, PATHMAX, tp);
+	if (ln_utf8_nfd(ln_path_base(tp), nfd, 512) < 0)
 		return LN_ENAMETOOLONG;
 	start(fs, &b, FPMoveAndRename);
 	afp_b_u16(&b, fs->volid);
@@ -982,6 +981,18 @@ static int afp_rename(LnFs *fs, const char *from, const char *to)
 	if (code == kFPCantMove)
 		return LN_EINVAL;                          /* into itself */
 	return afp_err(code);
+}
+
+static int afp_rename(LnFs *fs, const char *from, const char *to)
+{
+	/* three paths and two parameter sets: on the heap (small handler stack) */
+	char *m = ln_alloc(3 * PATHMAX + 512 + 2 * sizeof(AfpParams) + 8);
+	int r;
+	if (!m)
+		return LN_ENOMEM;
+	r = do_rename(fs, from, to, m, m + PATHMAX, m + 2 * PATHMAX, m + 3 * PATHMAX);
+	ln_free(m);
+	return r;
 }
 
 static int set_fdparms(LnFs *fs, const char *fp, u16 bitmap, const u8 *data, size_t dlen)
