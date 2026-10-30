@@ -165,5 +165,16 @@ EXPORT list, as servers answer "access denied" for unknown paths too).
   sub-directory URLs, statfs, list_shares, reconnect with open files, and a
   server restart with uncommitted writes (verifier change -> resend) and a
   replaced directory (stale handle -> lookup by path).
-- Amiga: `build/amiga/lncli` on the emulated A1200 (Riptide) against the same
-  ganesha on 192.168.78.1 (see the results in the commit log / report).
+- Amiga: `build/amiga/lncli` on the emulated A1200 (68020 at 14 MHz, 8 MB
+  fast RAM, AROS ROM, Riptide over uaenet) against the same ganesha on
+  192.168.78.1 through the portmapper, with MOUNT and NFS connections from
+  a reserved port (bind on bsdsocket.library works): shares (EXPORT), ls, df,
+  2 MB get and put (byte-identical on the host), mkdir, rename, rename onto
+  an existing file (refused), stat, touch (mtime), EACCES as nobody, ENOENT,
+  cat. Throughput with 32 KB requests: read 294-330 KB/s, write 179 KB/s
+  (UNSTABLE writes + COMMIT every 128 KB).
+
+Note for the emulator harness: its AROS ROM has no Assign command, so ENV:
+does not exist there; `ln_hostname()` (AUTH_SYS machine name) used to hang on
+an "insert volume ENV:" requester. It now suppresses requesters around
+GetVar (`src/amiga/sys_amiga.c`).

@@ -73,6 +73,8 @@ struct LnFile {
 	long    wbytes;
 	u8      verf[8];
 	int     have_verf;
+	u32     t0;                  /* open time (ln_ms) and byte counts for the log */
+	u64     nread, nwritten;
 };
 
 struct LnDir {
@@ -537,7 +539,7 @@ static int nfs_mount(const LnUrl *u, const LnCreds *cr, LnFs **out)
 	fs = ln_alloc(sizeof(*fs));
 	if (!fs) return LN_ENOMEM;
 	parse_opts(fs, u);
-	cl = rpc_auth_sys(fs->cred, sizeof(fs->cred), ln_time_unix(), ln_hostname(), fs->uid, fs->gid,
+	cl = rpc_auth_sys(fs->cred, sizeof(fs->cred), ln_ms(), ln_hostname(), fs->uid, fs->gid,
 	                  fs->gids, fs->ngids);
 	if (cl < 0) { ln_free(fs); return LN_EINVAL; }
 	fs->credlen = (size_t)cl;
@@ -892,6 +894,7 @@ static int nfs_open(LnFs *fs, const char *path, int flags, LnFile **out)
 	f->fs = fs;
 	f->fh = fh;
 	f->flags = flags;
+	f->t0 = ln_ms();
 	*out = f;
 	return LN_OK;
 }
@@ -945,6 +948,7 @@ static long nfs_read(LnFile *f, u64 off, void *buf, long n)
 		done += r;
 		if (eof || r == 0) break;
 	}
+	f->nread += (u64)done;
 	return done;
 }
 
@@ -1079,6 +1083,7 @@ static long nfs_write(LnFile *f, u64 off, const void *buf, long n)
 		}
 		done += w;
 	}
+	f->nwritten += (u64)done;
 	return done;
 }
 
@@ -1113,6 +1118,12 @@ static int nfs_close(LnFile *f)
 	int e;
 	if (!f) return LN_OK;
 	e = commit(f);
+	if (f->nread + f->nwritten >= 65536) {
+		u32 ms = ln_ms() - f->t0;
+		LN_LOG(1, "nfs: %s: read %lu, wrote %lu bytes in %lu ms (%lu KB/s)", f->path,
+		       (unsigned long)f->nread, (unsigned long)f->nwritten, (unsigned long)ms,
+		       (unsigned long)((f->nread + f->nwritten) / (ms ? ms : 1) * 1000 / 1024));
+	}
 	wq_free(f);
 	ln_free(f->path);
 	ln_free(f);
@@ -1273,7 +1284,7 @@ static int nfs_list_shares(const LnUrl *u, const LnCreds *cr, ln_share_cb cb, vo
 	if (!fs) return LN_ENOMEM;
 	parse_opts(fs, u);
 	fs->nfsport_fixed = 1;           /* only MOUNT is needed */
-	cl = rpc_auth_sys(fs->cred, sizeof(fs->cred), ln_time_unix(), ln_hostname(), fs->uid, fs->gid,
+	cl = rpc_auth_sys(fs->cred, sizeof(fs->cred), ln_ms(), ln_hostname(), fs->uid, fs->gid,
 	                  fs->gids, fs->ngids);
 	fs->credlen = cl > 0 ? (size_t)cl : 0;
 	e = find_ports(fs);
