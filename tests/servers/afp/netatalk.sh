@@ -3,7 +3,8 @@
 # private configuration in a temp directory, as root, in the foreground.
 #   netatalk.sh start DIR [PORT] [LISTEN]   -> exit 0 when it answers, 77 if unavailable
 #   netatalk.sh stop DIR
-# Creates the local test user "lagoon" (password "lagoon-test-pw", no home,
+# Creates the local test users "lagoon" (password "lagoon-test-pw") and
+# "lagoon8" (password "lagoon-t", for the 8-byte clear text login) (no home,
 # shell /bin/sh because afpd refuses users without a valid shell) if needed:
 # the DHX2 and clear text logins check it with PAM against /etc/shadow.
 # Volumes: lagoon (DIR/vol, writable by everyone so guest works too),
@@ -23,13 +24,20 @@ start)
 		useradd -M -s /bin/sh -c "Lagoon test user" lagoon || exit 77
 	fi
 	echo 'lagoon:lagoon-test-pw' | chpasswd || exit 77
+	# "Cleartxt Passwrd" carries 8 password bytes at most: a second user
+	# with an 8-character password for that test
+	if ! id lagoon8 >/dev/null 2>&1; then
+		useradd -M -s /bin/sh -c "Lagoon test user (clear text)" lagoon8 || exit 77
+	fi
+	echo 'lagoon8:lagoon-t' | chpasswd || exit 77
+	# afpd runs as the logged-in user: the volumes must not be below a
+	# private (0700) directory such as the scratchpad, hence a /tmp dir
 	mkdir -p "$dir/vol" "$dir/ro" "$dir/secret" "$dir/db"
 	chmod 777 "$dir/vol" "$dir/secret"
 	chmod 755 "$dir/ro" "$dir"
 	echo "read-only volume" > "$dir/ro/readme.txt"
-	cnid=$((port + 9))
 	sed -e "s|@DIR@|$dir|g" -e "s|@PORT@|$port|g" -e "s|@LISTEN@|$listen|g" \
-	    -e "s|@CNIDPORT@|$cnid|g" -e "s|@LOGLEVEL@|${AFP_LOGLEVEL:-info}|g" \
+	    -e "s|@LOGLEVEL@|${AFP_LOGLEVEL:-info}|g" -e "s|@TICKLE@|${AFP_TICKLE:-10}|g" \
 	    "$here/afp.conf.in" > "$dir/afp.conf"
 	# afpd alone, without the netatalk supervisor: cnid_metad (the "dbd"
 	# CNID scheme) exits when it cannot raise RLIMIT_NOFILE to 65535, which

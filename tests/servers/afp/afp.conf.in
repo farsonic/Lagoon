@@ -12,14 +12,12 @@ zeroconf = no
 spotlight = no
 vol dbpath = @DIR@/db/$v/
 login message = Welcome to the Lagoon test server
-tickleval = 10
-timeout = 6
+tickleval = @TICKLE@
+timeout = 3
 
 [lagoon]
 path = @DIR@/vol
 cnid scheme = tdb
-file perm = 0664
-directory perm = 0775
 
 [readonly]
 path = @DIR@/ro

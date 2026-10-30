@@ -450,8 +450,11 @@ static int getparms(LnFs *fs, const char *fpath, AfpParams *pp)
 	afp_b_u16(&b, fs->dbm);
 	afp_b_path(&b, fpath);
 	r = call(fs, &b, fs->rbuf, RBUFMAX, &n);
+	/* a file used as a directory: Netatalk says ParamErr, others ObjectTypeErr */
+	if (r == LN_ENOTDIR || (r == LN_EINVAL && fpath[0]))
+		return LN_ENOENT;
 	if (r)
-		return r == LN_ENOTDIR ? LN_ENOENT : r;   /* a file used as a directory */
+		return r;
 	if (n < 6)
 		return LN_EPROTO;
 	fbm = ln_be16(fs->rbuf);
