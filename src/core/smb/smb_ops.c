@@ -721,7 +721,7 @@ static int fetch_dir(LnDir *d)
 
 static int smb_readdir(LnDir *d, char *name, size_t namemax, LnStat *st)
 {
-	char tmp[1024];
+	char *tmp = (char *)d->fs->q16;          /* scratch (2 KB), keeps the handler stack small */
 	for (;;) {
 		const u8 *e;
 		u32 next, nl;
@@ -754,7 +754,7 @@ static int smb_readdir(LnDir *d, char *name, size_t namemax, LnStat *st)
 			d->returned++;
 			continue;
 		}
-		n = ln_utf16le_to_utf8(e + 104, nl, tmp, sizeof(tmp));
+		n = ln_utf16le_to_utf8(e + 104, nl, tmp, sizeof(d->fs->q16));
 		if (n < 0 || ln_utf8_nfc(tmp, name, namemax) < 0) {
 			LN_LOG(1, "smb: skipping a name that is too long");
 			continue;

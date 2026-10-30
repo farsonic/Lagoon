@@ -9,7 +9,8 @@
 	server role = standalone server
 	smb ports = @PORT@
 	interfaces = @IFACES@
-	bind interfaces only = yes
+	bind interfaces only = @BINDONLY@
+	@HOSTS@
 	private dir = @DIR@/private
 	lock directory = @DIR@/lock
 	state directory = @DIR@/state

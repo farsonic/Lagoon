@@ -5,6 +5,6 @@ DIR=${1:?usage: stop.sh DIR}
 for p in smbd samba-dcerpcd; do
 	[ -f "$DIR/run/$p.pid" ] && kill "$(cat "$DIR/run/$p.pid")" 2>/dev/null
 done
-# children (rpcd_*, per-connection smbd) that still use this config
-pkill -f -- "$DIR/smb.conf" 2>/dev/null
+# RPC workers started for this config
+pkill -f -- "^/usr/libexec/samba/[a-z_-]+ --configfile=$DIR/smb.conf" 2>/dev/null
 exit 0
