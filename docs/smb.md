@@ -147,7 +147,34 @@ friends = `LN_EAUTH`, BAD_NETWORK_NAME = `LN_ENOSHARE`, FILE_IS_A_DIRECTORY
 - Names longer than the caller's buffer are skipped in listings (logged).
 - Memory: one connection buffer per direction (about 64 KB + headers each,
   growing to the largest message), plus 4 KB of AES tables (shared) and
-  per-key schedules (an LnGcm is about 500 bytes).
+  per-key state (an AES-GCM key with its GHASH table is about 4.3 KB; up to
+  three are live: GMAC signing and both encryption directions).
+
+## Speed on a 68020
+
+Measured with `build/amiga/lncli` on the emulated A1200 (68020, 14 MHz,
+fs-uae, Riptide) against Samba on the host. The times cover the whole
+command (connect, NEGOTIATE, NTLMv2 logon, tree connect, the transfer):
+
+| 1 MB file | Time | Rate |
+|---|---|---|
+| get, 3.0.2, unsigned (`dialect=3.0.2`) | 2.9 s | ~360 KB/s |
+| get, 3.1.1, AES-GMAC signing (default) | 22.9 s | ~46 KB/s |
+| put, 3.1.1, AES-GMAC signing (default) | 24.3 s | ~43 KB/s |
+| get, 3.1.1, AES-CMAC signing (`gmac=no`) | 37.7 s | ~27 KB/s |
+| get, 2.1, HMAC-SHA256 signing (`sign=required`) | 39.4 s | ~27 KB/s |
+| get, 3.1.1, AES-128-GCM encryption (`encrypt=yes`) | 58.6 s | ~18 KB/s |
+| put, 3.1.1, GCM (share requires encryption) | 59.8 s | ~17 KB/s |
+| get, 3.1.1, AES-128-CCM encryption (`cipher=ccm`) | 73.3 s | ~14 KB/s |
+
+Crypto dominates: one AES-128 block costs about 2000 instructions with
+vbcc (~1 ms at 14 MHz, ~35 s per MB). GHASH uses an 8-bit table (4 KB per
+key), which brings GMAC to roughly 20 s per MB, cheaper than CMAC and HMAC.
+GCM needs one AES pass plus GHASH; CCM needs two AES passes.
+3.1.1 always signs non-guest sessions, so on a trusted LAN where speed
+matters, `dialect=3.0.2` (or `3.0`) without `sign=required` avoids
+per-message MACs. This only works if the server does not require signing.
+Faster CPUs (68030/040/060) scale about linearly.
 
 ## Tests
 
