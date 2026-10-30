@@ -643,8 +643,10 @@ static int do_gadget(int id, UWORD code, int shift)
 	case E_TEST: test(); break;
 	case E_OK:
 		harvest();
+		lp_trace("editor: OK, validating");
 		if (validate() == 0)
 			return 1;
+		lp_trace("editor: invalid");
 		break;
 	case E_CANCEL:
 		return -1;
@@ -678,7 +680,9 @@ static int keypress(UWORD code, UWORD qual)
 		build();
 		return 0;
 	case E_AUTO: case E_RO: case E_OPT1: case E_OPT2:
-		if (gad[keys[i].id] && gad[keys[i].id]->GadgetType & GTYP_STRGADGET) {
+		/* NFS: UID/GID are string gadgets (GadgetType is not a bit mask:
+		 * a GadTools checkbox is a custom gadget, type 5) */
+		if (ed.proto == P_NFS && (keys[i].id == E_OPT1 || keys[i].id == E_OPT2)) {
 			ActivateGadget(gad[keys[i].id], win, NULL);
 			return 0;
 		}
@@ -721,6 +725,7 @@ int lp_edit_share(struct Window *parent, LnShare *s, int index, int list_now)
 			UWORD code = im->Code, qual = im->Qualifier;
 			struct Gadget *g = (struct Gadget *)im->IAddress;
 			GT_ReplyIMsg(im);
+			lp_trace("editor: class %lx code %lx", (unsigned long)cls, (unsigned long)code);
 			switch (cls) {
 			case IDCMP_REFRESHWINDOW:
 				GT_BeginRefresh(win);
@@ -739,6 +744,7 @@ int lp_edit_share(struct Window *parent, LnShare *s, int index, int list_now)
 			}
 		}
 	}
+	lp_trace("editor: done %ld", (long)r);
 	if (r > 0)
 		to_share(s);
 out:

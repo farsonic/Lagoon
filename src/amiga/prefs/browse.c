@@ -30,7 +30,7 @@ typedef struct LWin {
 
 static void lw_layout(LWin *w)
 {
-	w->lw = 60 * lp_fcw + 24;
+	w->lw = 62 * lp_fcw + 24;
 	w->lh = LIST_ROWS * lp_lh + 4;
 	w->lx = lp_scr->WBorLeft + 8;
 	w->ly = lp_scr->WBorTop + lp_scr->Font->ta_YSize + 1 + 5;
@@ -263,7 +263,7 @@ static void search(LWin *w, LpList *l)
 		}
 		if (!strcmp(f->scheme, "nfs"))
 			ln_mdns_txt(&svc[i], "path", f->share, sizeof(f->share));
-		lp_list_add(l, "%-4s %-24.24s %s%s%s%s", f->scheme[0] == 's' ? "SMB" : f->scheme[0] == 'a' ? "AFP" : "NFS",
+		lp_list_add(l, "%-4s %-22.22s %s%s%s%s", f->scheme[0] == 's' ? "SMB" : f->scheme[0] == 'a' ? "AFP" : "NFS",
 		            svc[i].instance, svc[i].host, addr[0] && svc[i].host[0] ? " (" : "", addr,
 		            addr[0] && svc[i].host[0] ? ")" : "");
 		nfound++;
@@ -284,7 +284,7 @@ static void search(LWin *w, LpList *l)
 			ln_snprintf(name, sizeof(name), "%s (%s)", nb[i].name[0] ? nb[i].name : "?", nb[i].group);
 		else
 			ln_strlcpy(name, nb[i].name[0] ? nb[i].name : "?", sizeof(name));
-		lp_list_add(l, "%-4s %-24.24s %s", "SMB", name, addr);
+		lp_list_add(l, "%-4s %-22.22s %s", "SMB", name, addr);
 		nfound++;
 	}
 	if (n == LN_EBREAK || m == LN_EBREAK || (n < 0 && m < 0 && nfound == 0 && (n == LN_ENONET || m == LN_ENONET)))

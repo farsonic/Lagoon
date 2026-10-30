@@ -58,6 +58,8 @@ struct Gadget *lp_mk(ULONG kind, struct Gadget *prev, int id, const char *label,
 const char *lp_gstr(struct Gadget *g);     /* text of a string gadget */
 long lp_request(struct Window *w, const char *buttons, const char *fmt, ...);
 void lp_message(struct Window *w, const char *fmt, ...);
+extern int lp_debug;                       /* DEBUG argument: trace events to the CLI */
+void lp_trace(const char *fmt, ...);
 /* block input to w with a busy pointer (nesting is not supported) */
 void lp_block(struct Window *w, struct Requester *rq);
 void lp_unblock(struct Window *w, struct Requester *rq);

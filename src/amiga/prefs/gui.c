@@ -215,6 +215,23 @@ long lp_request(struct Window *w, const char *buttons, const char *fmt, ...)
 	return r;
 }
 
+int lp_debug;
+
+void lp_trace(const char *fmt, ...)
+{
+	va_list ap;
+	char t[160];
+	BPTR o;
+	if (!lp_debug || !(o = Output()))
+		return;
+	va_start(ap, fmt);
+	ln_vsnprintf(t, sizeof(t) - 1, fmt, ap);
+	va_end(ap);
+	ln_strlcat(t, "\n", sizeof(t));
+	Write(o, t, (LONG)strlen(t));
+	Flush(o);
+}
+
 void lp_message(struct Window *w, const char *fmt, ...)
 {
 	va_list ap;

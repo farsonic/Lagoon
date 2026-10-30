@@ -642,6 +642,7 @@ static void event_loop(void)
 			struct Gadget *gad = (struct Gadget *)im->IAddress;
 			int i;
 			GT_ReplyIMsg(im);
+			lp_trace("main: class %lx code %lx", (unsigned long)cls, (unsigned long)code);
 			switch (cls) {
 			case IDCMP_REFRESHWINDOW:
 				GT_BeginRefresh(lp_main);
@@ -763,18 +764,19 @@ static void cleanup(void)
 
 int main(int argc, char **argv)
 {
-	LONG args[6] = { 0, 0, 0, 0, 0, 0 };
+	LONG args[7] = { 0, 0, 0, 0, 0, 0, 0 };
 	struct RDArgs *rda = NULL;
 	int rc = 0;
 	LN_UNUSED(argv);
 	ln_mdns_resolve_hook = ln_mdns_resolve;
 	if (argc) {
-		rda = ReadArgs((STRPTR)"FROM,EDIT/S,USE/S,SAVE/S,PUBSCREEN/K,LANGUAGE/K", args, NULL);
+		rda = ReadArgs((STRPTR)"FROM,EDIT/S,USE/S,SAVE/S,PUBSCREEN/K,LANGUAGE/K,DEBUG/S", args, NULL);
 		if (!rda) {
 			PrintFault(IoErr(), (STRPTR)"LagoonPrefs");
 			return 10;
 		}
 		from_path = (const char *)args[0];
+		lp_debug = args[6] != 0;
 	}
 	lp_locale_open((const char *)args[5]);
 	if (load(from_path, 0) < 0 && (args[2] || args[3])) {

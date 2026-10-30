@@ -50,10 +50,12 @@ PATH=$VBCC/bin:$PATH VBCC=$VBCC "$VBCC/bin/vc" +aos68k -O2 -I/opt/amiga/ndk/Incl
 	echo "as1|DH0:C/tassign ENV DH0:ENV"
 	echo "as2|DH0:C/tassign ENVARC DH0:ENVARC"
 	echo "as3|DH0:C/tassign T DH0:T"
-	echo "prefs|DH0:C/LagoonPrefs $largs"
+	echo "prefs|DH0:C/LagoonPrefs $largs DEBUG"
 } > "$cmds"
-fx=""
-[ "$mode" = ntsc ] && fx="ntsc_mode = 1"
+# FS-UAE turns the cursor keys into a joystick unless told otherwise
+fx="joystick_port_1 = none"
+[ "$mode" = ntsc ] && fx="$fx
+ntsc_mode = 1"
 
 mkdir -p "$out/emu"
 TMPDIR=$out/emu LAGOON_DH0_EXTRA=$extra FSUAE_EXTRA="$fx" "$here/run_emu.sh" "$cmds" 240 "$top/build/amiga/LagoonPrefs" > "$out/run_emu.log" 2>&1 &
@@ -88,7 +90,8 @@ ncalrpc dir = $nbdir
 log file = $nbdir/log.nmbd
 nmbd:socket dir = $nbdir/nmbd
 CONF
-	nmbd -D -s "$nbdir/smb.conf" && sleep 1 && nbpid=$(cat "$nbdir/nmbd.pid" 2>/dev/null)
+	nmbd -F --debug-stdout -d 3 --no-process-group -s "$nbdir/smb.conf" > "$out/nmbd.log" 2>&1 &
+	nbpid=$!
 fi
 cleanup() {
 	[ -n "$rpid" ] && kill $rpid 2>/dev/null
@@ -99,12 +102,22 @@ trap cleanup EXIT
 
 fails=0
 fail() { echo "FAIL $*"; fails=$((fails + 1)); }
-key() { for k in "$@"; do xdotool key "$k"; sleep 0.4; done; }
-typ() { xdotool type --delay 120 "$1"; sleep 0.3; }
-shot() { $ptr stable 2 90 >/dev/null || fail "screen did not settle before $1"; $ptr shot "$out/$1.png"; }
+# never type into another run's emulator (the display is shared, runs queue)
+mine() {
+	pgrep -f "fs-uae $out/emu/lagoon-emu" >/dev/null && return 0
+	echo "FAIL: our emulator is gone (LagoonPrefs quit early?)"
+	exit 1
+}
+key() { for k in "$@"; do mine; xdotool key "$k"; sleep 0.4; done; }
+typ() { mine; xdotool type --delay 120 "$1"; sleep 0.3; }
+shot() { mine; $ptr stable 2 90 >/dev/null || fail "screen did not settle before $1"; $ptr shot "$out/$1.png"; }
 
-# boot + Riptide + window
+# boot + Riptide + window; click into it so it has the keyboard
 sleep 25
+mine
+$ptr stable 2 90 >/dev/null
+mine
+$ptr click 560 270 >/dev/null
 if [ -n "$lang" ]; then
 	# a translation: main window and editor (Return/Esc work in every language)
 	shot 01-main-$lang
