@@ -40,10 +40,10 @@ test: all
 # ------------------------------------------------------------- Amiga ----
 VC      := PATH=$(VBCC)/bin:$$PATH VBCC=$(VBCC) $(VBCC)/bin/vc +aos68k
 ACFLAGS := -c99 -O2 -dontwarn=153 -cpu=68020 -I$(NDK) -I$(NETINC) -Isrc/core -Isrc/amiga -DLN_CRYPTO_ASM
-# 68020 assembly for the AES rounds and GHASH (src/core/crypto/*.s, Amiga
-# only; LN_CRYPTO_ASM drops the C versions from aes.c and gcm.c)
+# 68020 assembly for the AES rounds, GHASH and SHA-256 (src/core/crypto/*.s,
+# Amiga only; LN_CRYPTO_ASM drops the C versions from aes.c, gcm.c, hash.c)
 CORE_ASM := $(wildcard src/core/*/*.s)
-AOBJ    := $(patsubst src/%.c,build/amiga/obj/%.o,$(CORE_SRC) src/amiga/sys_amiga.c src/amiga/net_amiga.c) \
+AOBJ    := $(patsubst src/%.c,build/amiga/obj/%.o,$(CORE_SRC) src/amiga/sys_amiga.c src/amiga/net_amiga.c src/amiga/mount.c) \
            $(patsubst src/%.s,build/amiga/obj/%.o,$(CORE_ASM))
 HANDLER_SRC := $(wildcard src/amiga/handler/*.c)
 CMD_SRC     := $(wildcard src/amiga/cmd/*.c)
@@ -66,11 +66,11 @@ amiga: build/amiga/liblagoon.lib
 
 # the handler has its own entry point (no C start-up code): see src/amiga/handler
 build/amiga/lagoon-handler: $(patsubst src/%.c,build/amiga/obj/%.o,$(HANDLER_SRC)) build/amiga/liblagoon.lib
-	$(VC) -nostdlib -o $@ $(patsubst src/%.c,build/amiga/obj/%.o,$(HANDLER_SRC)) build/amiga/liblagoon.lib -lvc -lamiga
+	$(VC) -nostdlib -s -o $@ $(patsubst src/%.c,build/amiga/obj/%.o,$(HANDLER_SRC)) build/amiga/liblagoon.lib -lvc -lamiga
 build/amiga/Lagoon: $(patsubst src/%.c,build/amiga/obj/%.o,$(CMD_SRC)) build/amiga/liblagoon.lib
-	$(VC) -o $@ $(patsubst src/%.c,build/amiga/obj/%.o,$(CMD_SRC)) build/amiga/liblagoon.lib -lamiga
+	$(VC) -s -o $@ $(patsubst src/%.c,build/amiga/obj/%.o,$(CMD_SRC)) build/amiga/liblagoon.lib -lamiga
 build/amiga/LagoonPrefs: $(patsubst src/%.c,build/amiga/obj/%.o,$(PREFS_SRC)) build/amiga/liblagoon.lib
-	$(VC) -o $@ $(patsubst src/%.c,build/amiga/obj/%.o,$(PREFS_SRC)) build/amiga/liblagoon.lib -lamiga
+	$(VC) -s -o $@ $(patsubst src/%.c,build/amiga/obj/%.o,$(PREFS_SRC)) build/amiga/liblagoon.lib -lamiga
 
 package: all amiga
 	tools/mkpackage.sh

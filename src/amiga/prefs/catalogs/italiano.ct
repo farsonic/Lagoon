@@ -1,0 +1,358 @@
+## version $VER: LagoonPrefs.catalog 0.1 (30.10.2026)
+## language italiano
+## codeset 0
+; Lagoon - LagoonPrefs, italiano translation (UTF-8 here, ISO-8859-1 in the catalog)
+; SPDX-License-Identifier: GPL-2.0-only
+;
+MSG_TITLE
+Preferenze Lagoon
+; Lagoon Preferences
+;
+MSG_HDR_DEVICE
+Unità
+; Device
+;
+MSG_HDR_TYPE
+Tipo
+; Type
+;
+MSG_HDR_SERVER
+Server / condivisione
+; Server / share
+;
+MSG_HDR_STATE
+Stato
+; State
+;
+MSG_STATE_MOUNTED
+Montato
+; Mounted
+;
+MSG_STATE_STARTUP
+All'avvio
+; Startup
+;
+MSG_ADD
+_Aggiungi...
+; _Add...
+;
+MSG_EDIT
+_Modifica...
+; _Edit...
+;
+MSG_REMOVE
+_Rimuovi
+; _Remove
+;
+MSG_MOUNT
+Mo_nta
+; _Mount
+;
+MSG_UNMOUNT
+Smo_nta
+; Un_mount
+;
+MSG_BROWSE
+_Esplora la rete...
+; _Browse network...
+;
+MSG_SAVE
+_Salva
+; _Save
+;
+MSG_USE
+_Usa
+; _Use
+;
+MSG_CANCEL
+Annu_lla
+; _Cancel
+;
+MSG_EMPTY
+Nessuna condivisione: usa Aggiungi o Esplora la rete.
+; No shares yet: use Add or Browse network.
+;
+MSG_USER_INFO
+utente %s
+; user %s
+;
+MSG_MENU_PROJECT
+Progetto
+; Project
+;
+MSG_MENU_OPEN
+Apri...
+; Open...
+;
+MSG_MENU_SAVEAS
+Salva come...
+; Save As...
+;
+MSG_MENU_LASTSAVED
+Ultimo salvataggio
+; Last Saved
+;
+MSG_MENU_RESTORE
+Ripristina
+; Restore
+;
+MSG_MENU_QUIT
+Esci
+; Quit
+;
+MSG_MENU_EDIT
+Modifica
+; Edit
+;
+MSG_MENU_RESET
+Valori predefiniti
+; Reset to Defaults
+;
+MSG_ASL_OPEN
+Apri elenco condivisioni
+; Open share list
+;
+MSG_ASL_SAVE
+Salva elenco condivisioni come
+; Save share list as
+;
+MSG_NEW_TITLE
+Nuova condivisione
+; New share
+;
+MSG_EDIT_TITLE
+Modifica condivisione
+; Edit share
+;
+MSG_PROTOCOL
+_Protocollo
+; _Protocol
+;
+MSG_PROTO_SMB
+SMB - Windows, macOS, Samba
+; SMB - Windows, macOS, Samba
+;
+MSG_PROTO_AFP
+AFP - Mac meno recenti
+; AFP - older Macs
+;
+MSG_PROTO_NFS
+NFS - Unix, Linux
+; NFS - Unix, Linux
+;
+MSG_SERVER
+Ser_ver
+; Ser_ver
+;
+MSG_SHARE_SMB
+_Condivisione
+; S_hare
+;
+MSG_SHARE_AFP
+Volume
+; Volume
+;
+MSG_SHARE_NFS
+Export
+; Export
+;
+MSG_LIST
+_Elenco...
+; _List...
+;
+MSG_FOLDER
+Ca_rtella
+; _Folder
+;
+MSG_USER
+_Utente
+; Us_er
+;
+MSG_PASSWORD
+Pass_word
+; Pass_word
+;
+MSG_DOMAIN
+_Dominio
+; Domai_n
+;
+MSG_DEVICE
+U_nità
+; _Device
+;
+MSG_VOLLABEL
+E_tichetta
+; Volume la_bel
+;
+MSG_AUTOMOUNT
+_Monta all'avvio
+; Mount at start_up
+;
+MSG_READONLY
+_Sola lettura
+; _Read-only
+;
+MSG_SIGN
+Richiedi _firma
+; Require si_gning
+;
+MSG_ENCRYPT
+Cifr_a
+; Encr_ypt
+;
+MSG_UID
+_UID
+; U_ID
+;
+MSG_GID
+_GID
+; _GID
+;
+MSG_CLEARTEXT
+Password in c_hiaro
+; Allow clear-te_xt password
+;
+MSG_URL
+URL
+; URL
+;
+MSG_TEST
+Ver_ifica
+; _Test
+;
+MSG_OK
+_OK
+; _OK
+;
+MSG_BROWSE_TITLE
+Server in rete
+; Servers on the network
+;
+MSG_SEARCHING
+Ricerca in rete...
+; Searching the network...
+;
+MSG_FOUND
+%ld trovati.
+; %ld found.
+;
+MSG_FOUND_NONE
+Nessun server trovato. Inserisci il server a mano.
+; No servers found. Enter the server by hand.
+;
+MSG_AGAIN
+Cerca di _nuovo
+; _Search again
+;
+MSG_PICK_TITLE
+Condivisioni su %s
+; Shares on %s
+;
+MSG_SELECT
+_Scegli
+; _Select
+;
+MSG_LISTING
+Richiesta delle condivisioni a %s...
+; Asking %s for its shares...
+;
+MSG_REQ_OK
+OK
+; OK
+;
+MSG_REQ_REMOVE
+Rimuovi|Annulla
+; Remove|Cancel
+;
+MSG_ASK_REMOVE
+Rimuovere la condivisione %s?
+; Remove the share %s?
+;
+MSG_ERR_WINDOW
+Impossibile aprire la finestra.
+; Cannot open the window.
+;
+MSG_ERR_READ
+Impossibile leggere %s.
+; Cannot read %s.
+;
+MSG_ERR_WRITE
+Impossibile scrivere %s.
+; Cannot write %s.
+;
+MSG_ERR_PARSE
+%s: errore alla riga %ld.
+; %s: error in line %ld.
+;
+MSG_ERR_FULL
+L'elenco delle condivisioni è pieno.
+; The share list is full.
+;
+MSG_ERR_NOMEM
+Memoria insufficiente.
+; Out of memory.
+;
+MSG_ERR_COMMAND
+%s non riuscito:\n%s
+; %s failed:\n%s
+;
+MSG_BAD_DEVICE
+Unità: inserisci un nome da 1 a 30 caratteri\nsenza ':', '/' o spazi, ad es. NAS.
+; Device: enter a name of 1 to 30 characters\nwithout ':', '/' or spaces, e.g. NAS.
+;
+MSG_DUP_DEVICE
+Unità: %s è già usato da un'altra condivisione.
+; Device: %s is already used by another share.
+;
+MSG_BAD_SERVER
+Server: inserisci un nome host o un indirizzo.
+; Server: enter a host name or an address.
+;
+MSG_BAD_SHARE
+%s: inserisci un nome o premi Elenco per sceglierne uno.
+; %s: enter a name, or press List to choose one.
+;
+MSG_BAD_EXPORT
+Export: inserisci il percorso dell'export, ad es. /srv/data.
+; Export: enter the path of the export, e.g. /srv/data.
+;
+MSG_BAD_NUMBER
+UID e GID: inserisci numeri o lasciali vuoti.
+; UID and GID: enter numbers, or leave them empty.
+;
+MSG_TESTING
+Connessione a %s...
+; Connecting to %s...
+;
+MSG_TEST_OK
+Connesso a %s.\n%s liberi su %s.
+; Connected to %s.\n%s free of %s.
+;
+MSG_TEST_RO
+La condivisione è di sola lettura.
+; The share is read-only.
+;
+MSG_TEST_FAIL
+Impossibile connettersi a %s:\n%s
+; Cannot connect to %s:\n%s
+;
+MSG_LIST_NONE
+Nessuna condivisione trovata su %s.
+; No shares found on %s.
+;
+MSG_LIST_FAIL
+Impossibile elencare le condivisioni di %s:\n%s
+; Cannot list the shares on %s:\n%s
+;
+MSG_LIST_UNSUP
+Questo protocollo non può elencare le condivisioni.\nInserisci il nome a mano.
+; This protocol cannot list shares.\nEnter the name by hand.
+;
+MSG_NO_NETWORK
+Nessuno stack TCP/IP attivo (bsdsocket.library).
+; No TCP/IP stack is running (bsdsocket.library).
+;
+MSG_FIRST_SERVER
+Inserisci prima il server.
+; Enter the server first.
+;

@@ -1,0 +1,273 @@
+; Lagoon - catalog description for LagoonPrefs (English built in).
+; tools/mkcatalog.py builds src/amiga/prefs/strings.h from this file and
+; LOCALE:Catalogs/<language>/LagoonPrefs.catalog from the .ct files.
+; '_' marks a keyboard shortcut: keep them unique within each window.
+; SPDX-License-Identifier: GPL-2.0-only
+;
+MSG_TITLE (0//)
+Lagoon Preferences
+;
+; ---- main window ----
+MSG_HDR_DEVICE (//)
+Device
+;
+MSG_HDR_TYPE (//)
+Type
+;
+MSG_HDR_SERVER (//)
+Server / share
+;
+MSG_HDR_STATE (//)
+State
+;
+MSG_STATE_MOUNTED (//)
+Mounted
+;
+MSG_STATE_STARTUP (//)
+Startup
+;
+MSG_ADD (//)
+_Add...
+;
+MSG_EDIT (//)
+_Edit...
+;
+MSG_REMOVE (//)
+_Remove
+;
+MSG_MOUNT (//)
+_Mount
+;
+MSG_UNMOUNT (//)
+Un_mount
+;
+MSG_BROWSE (//)
+_Browse network...
+;
+MSG_SAVE (//)
+_Save
+;
+MSG_USE (//)
+_Use
+;
+MSG_CANCEL (//)
+_Cancel
+;
+MSG_EMPTY (//)
+No shares yet: use Add or Browse network.
+;
+MSG_USER_INFO (//)
+user %s
+;
+MSG_MENU_PROJECT (//)
+Project
+;
+MSG_MENU_OPEN (//)
+Open...
+;
+MSG_MENU_SAVEAS (//)
+Save As...
+;
+MSG_MENU_LASTSAVED (//)
+Last Saved
+;
+MSG_MENU_RESTORE (//)
+Restore
+;
+MSG_MENU_QUIT (//)
+Quit
+;
+MSG_MENU_EDIT (//)
+Edit
+;
+MSG_MENU_RESET (//)
+Reset to Defaults
+;
+MSG_ASL_OPEN (//)
+Open share list
+;
+MSG_ASL_SAVE (//)
+Save share list as
+;
+; ---- share editor ----
+MSG_NEW_TITLE (//)
+New share
+;
+MSG_EDIT_TITLE (//)
+Edit share
+;
+MSG_PROTOCOL (//)
+_Protocol
+;
+MSG_PROTO_SMB (//)
+SMB - Windows, macOS, Samba
+;
+MSG_PROTO_AFP (//)
+AFP - older Macs
+;
+MSG_PROTO_NFS (//)
+NFS - Unix, Linux
+;
+MSG_SERVER (//)
+Ser_ver
+;
+MSG_SHARE_SMB (//)
+S_hare
+;
+MSG_SHARE_AFP (//)
+Volume
+;
+MSG_SHARE_NFS (//)
+Export
+;
+MSG_LIST (//)
+_List...
+;
+MSG_FOLDER (//)
+_Folder
+;
+MSG_USER (//)
+Us_er
+;
+MSG_PASSWORD (//)
+Pass_word
+;
+MSG_DOMAIN (//)
+Domai_n
+;
+MSG_DEVICE (//)
+_Device
+;
+MSG_VOLLABEL (//)
+Volume la_bel
+;
+MSG_AUTOMOUNT (//)
+Mount at start_up
+;
+MSG_READONLY (//)
+_Read-only
+;
+MSG_SIGN (//)
+Require si_gning
+;
+MSG_ENCRYPT (//)
+Encr_ypt
+;
+MSG_UID (//)
+U_ID
+;
+MSG_GID (//)
+_GID
+;
+MSG_CLEARTEXT (//)
+Allow clear-te_xt password
+;
+MSG_URL (//)
+URL
+;
+MSG_TEST (//)
+_Test
+;
+MSG_OK (//)
+_OK
+;
+; ---- browse and pick windows ----
+MSG_BROWSE_TITLE (//)
+Servers on the network
+;
+MSG_SEARCHING (//)
+Searching the network...
+;
+MSG_FOUND (//)
+%ld found.
+;
+MSG_FOUND_NONE (//)
+No servers found. Enter the server by hand.
+;
+MSG_AGAIN (//)
+_Search again
+;
+MSG_PICK_TITLE (//)
+Shares on %s
+;
+MSG_SELECT (//)
+_Select
+;
+MSG_LISTING (//)
+Asking %s for its shares...
+;
+; ---- requesters ----
+MSG_REQ_OK (//)
+OK
+;
+MSG_REQ_REMOVE (//)
+Remove|Cancel
+;
+MSG_ASK_REMOVE (//)
+Remove the share %s?
+;
+MSG_ERR_WINDOW (//)
+Cannot open the window.
+;
+MSG_ERR_READ (//)
+Cannot read %s.
+;
+MSG_ERR_WRITE (//)
+Cannot write %s.
+;
+MSG_ERR_PARSE (//)
+%s: error in line %ld.
+;
+MSG_ERR_FULL (//)
+The share list is full.
+;
+MSG_ERR_NOMEM (//)
+Out of memory.
+;
+MSG_ERR_COMMAND (//)
+%s failed:\n%s
+;
+MSG_BAD_DEVICE (//)
+Device: enter a name of 1 to 30 characters\nwithout ':', '/' or spaces, e.g. NAS.
+;
+MSG_DUP_DEVICE (//)
+Device: %s is already used by another share.
+;
+MSG_BAD_SERVER (//)
+Server: enter a host name or an address.
+;
+MSG_BAD_SHARE (//)
+%s: enter a name, or press List to choose one.
+;
+MSG_BAD_EXPORT (//)
+Export: enter the path of the export, e.g. /srv/data.
+;
+MSG_BAD_NUMBER (//)
+UID and GID: enter numbers, or leave them empty.
+;
+MSG_TESTING (//)
+Connecting to %s...
+;
+MSG_TEST_OK (//)
+Connected to %s.\n%s free of %s.
+;
+MSG_TEST_RO (//)
+The share is read-only.
+;
+MSG_TEST_FAIL (//)
+Cannot connect to %s:\n%s
+;
+MSG_LIST_NONE (//)
+No shares found on %s.
+;
+MSG_LIST_FAIL (//)
+Cannot list the shares on %s:\n%s
+;
+MSG_LIST_UNSUP (//)
+This protocol cannot list shares.\nEnter the name by hand.
+;
+MSG_NO_NETWORK (//)
+No TCP/IP stack is running (bsdsocket.library).
+;
+MSG_FIRST_SERVER (//)
+Enter the server first.

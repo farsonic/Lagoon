@@ -1,0 +1,23 @@
+Short:        SMB2/3, AFP and NFS network file systems
+Author:       The Lagoon authors
+Uploader:     The Lagoon authors
+Type:         disk/misc
+Version:      @VERSION@
+Architecture: m68k-amigaos >= 3.0.0
+Requires:     68020+, a TCP/IP stack (bsdsocket.library)
+Distribution: Aminet
+
+Lagoon mounts network shares as AmigaDOS volumes:
+
+  * SMB 2.0.2 to 3.1.1 (signing, encryption): Windows, macOS file
+    sharing, Samba and practically every NAS box
+  * AFP 3.x over DSI: older Macs, AFP-only Time Capsules, Netatalk
+  * NFS v3 over TCP: Linux, BSD and other Unix servers
+
+It works over any bsdsocket.library stack (Riptide, Roadshow, Miami,
+AmiTCP, Genesis). LagoonPrefs (GadTools, no MUI needed) edits the share
+list, finds servers on the network (mDNS/Bonjour and NetBIOS), lists their
+shares and tests the connection. The Installer script sets everything up,
+including mounting the shares at boot.
+
+Free software under the GNU General Public License version 2.
