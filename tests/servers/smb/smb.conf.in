@@ -1,0 +1,79 @@
+# Lagoon SMB test server (Samba). start.sh fills in @DIR@, @PORT@, @IFACES@,
+# @SIGNING@ and @MAP@. Shares are served as root (force user) from @DIR@;
+# the test login is "lagoon" / "lagoon-test-pw" in a private tdbsam passdb.
+# SPDX-License-Identifier: GPL-2.0-only
+[global]
+	workgroup = LAGOON
+	netbios name = LAGOONTEST
+	server string = Lagoon test server
+	server role = standalone server
+	smb ports = @PORT@
+	interfaces = @IFACES@
+	bind interfaces only = @BINDONLY@
+	@HOSTS@
+	private dir = @DIR@/private
+	lock directory = @DIR@/lock
+	state directory = @DIR@/state
+	cache directory = @DIR@/cache
+	pid directory = @DIR@/run
+	ncalrpc dir = @DIR@/ncalrpc
+	log file = @DIR@/log.%m
+	log level = 1
+	passdb backend = tdbsam:@DIR@/private/passdb.tdb
+	@MAP@
+	map to guest = bad user
+	guest account = nobody
+	server min protocol = SMB2_02
+	server signing = @SIGNING@
+	load printers = no
+	printing = bsd
+	printcap name = /dev/null
+	disable spoolss = yes
+	disable netbios = yes
+	kernel oplocks = no
+	usershare max shares = 0
+	ea support = yes
+	store dos attributes = yes
+
+[plain]
+	comment = Plain share
+	path = @DIR@/plain
+	read only = no
+	force user = root
+	force group = root
+
+[readonly]
+	comment = Read-only share
+	path = @DIR@/readonly
+	read only = yes
+	force user = root
+
+[encrypted]
+	comment = Encryption required
+	path = @DIR@/encrypted
+	read only = no
+	force user = root
+	server smb encrypt = required
+
+[fruit]
+	comment = macOS-like (vfs_fruit)
+	path = @DIR@/fruit
+	read only = no
+	force user = root
+	vfs objects = catia fruit streams_xattr
+	fruit:metadata = stream
+	fruit:model = MacSamba
+	fruit:encoding = native
+
+[guest]
+	comment = Guest share
+	path = @DIR@/guest
+	read only = no
+	guest ok = yes
+	force user = root
+
+[hidden$]
+	comment = Hidden share
+	path = @DIR@/plain
+	read only = yes
+	force user = root

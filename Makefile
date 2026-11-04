@@ -40,7 +40,7 @@ test: all
 # ------------------------------------------------------------- Amiga ----
 VC      := PATH=$(VBCC)/bin:$$PATH VBCC=$(VBCC) $(VBCC)/bin/vc +aos68k
 ACFLAGS := -c99 -O2 -dontwarn=153 -cpu=68020 -I$(NDK) -I$(NETINC) -Isrc/core -Isrc/amiga
-AOBJ    := $(patsubst src/%.c,build/amiga/obj/%.o,$(CORE_SRC) src/amiga/sys_amiga.c src/amiga/net_amiga.c)
+AOBJ    := $(patsubst src/%.c,build/amiga/obj/%.o,$(CORE_SRC) src/amiga/sys_amiga.c src/amiga/net_amiga.c src/amiga/mount.c)
 HANDLER_SRC := $(wildcard src/amiga/handler/*.c)
 CMD_SRC     := $(wildcard src/amiga/cmd/*.c)
 PREFS_SRC   := $(wildcard src/amiga/prefs/*.c)

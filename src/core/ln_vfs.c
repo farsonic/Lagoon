@@ -8,8 +8,9 @@
 extern const LnOps ln_smb_ops;   /* src/core/smb */
 extern const LnOps ln_afp_ops;   /* src/core/afp */
 extern const LnOps ln_nfs_ops;   /* src/core/nfs */
+extern const LnOps ln_mem_ops;   /* src/core/mem: in-memory test file system */
 
-static const LnOps *const backends[] = { &ln_smb_ops, &ln_afp_ops, &ln_nfs_ops };
+static const LnOps *const backends[] = { &ln_smb_ops, &ln_afp_ops, &ln_nfs_ops, &ln_mem_ops };
 
 const LnOps *ln_vfs_backend(int i)
 {
