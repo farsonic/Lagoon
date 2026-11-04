@@ -38,6 +38,8 @@ CONF
 cp "$extra/ENVARC/Lagoon/lagoon.conf" "$extra/ENV/Lagoon/"
 if [ -d "$top/build/amiga/catalogs" ]; then
 	cp -r "$top/build/amiga/catalogs" "$extra/C/Catalogs"
+	mkdir -p "$extra/Locale"
+	cp -r "$top/build/amiga/catalogs" "$extra/Locale/Catalogs"
 fi
 cmds=$extra/cmds
 largs=""
@@ -51,6 +53,7 @@ PATH=$VBCC/bin:$PATH VBCC=$VBCC "$VBCC/bin/vc" +aos68k -O2 -I/opt/amiga/ndk/Incl
 	echo "as1|DH0:C/tassign ENV DH0:ENV"
 	echo "as2|DH0:C/tassign ENVARC DH0:ENVARC"
 	echo "as3|DH0:C/tassign T DH0:T"
+	echo "as4|DH0:C/tassign LOCALE DH0:Locale"
 	echo "prefs|DH0:C/LagoonPrefs $largs DEBUG"
 } > "$cmds"
 # FS-UAE turns the cursor keys into a joystick unless told otherwise
@@ -70,7 +73,7 @@ while [ $t -lt 1800 ] && ! pgrep -f "fs-uae $out/emu/lagoon-emu" >/dev/null; do
 	sleep 1
 	t=$((t + 1))
 done
-python3 "$top/tests/servers/mdns/responder.py" --mcast 192.168.78.1 --addr 192.168.78.1 > "$out/responder.log" 2>&1 &
+python3 "$top/tests/servers/mdns/responder.py" --mcast 192.168.78.1 --addr 192.168.78.50 > "$out/responder.log" 2>&1 &
 rpid=$!
 nbdir=$(mktemp -d /tmp/lgnb.XXXXXX)      # short: nmbd's socket paths have a length limit
 nbpid=

@@ -42,6 +42,8 @@ void lp_locale_open(const char *language)
 		t[2].ti_Tag = TAG_DONE;
 		catalog = OpenCatalogA(NULL, (STRPTR)"LagoonPrefs.catalog", t);
 	}
+	lp_trace("locale.library %s, catalog %s (%s)", LocaleBase ? "open" : "missing",
+	         catalog ? "open" : "not found", language ? language : "Locale prefs");
 }
 
 void lp_locale_close(void)
