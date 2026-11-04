@@ -53,4 +53,9 @@ int  ln_udp_broadcast(LnSock *s, int on);
  * LN_EACCES if no reserved port can be bound (not privileged / all busy). */
 int  ln_tcp_connect_reserved(const char *host, u16 port, int timeout_ms, LnSock **out);
 
+/* prefs package: net_amiga.c asks this for "*.local" names its stack cannot
+ * resolve; Amiga programs set it to ln_mdns_resolve (ln_mdns.h) at start-up.
+ * Amiga only (not defined by net_posix.c). */
+extern int (*ln_mdns_resolve_hook)(const char *name, LnAddr *out, int max);
+
 #endif

@@ -27,7 +27,8 @@ ptr="python3 $here/fsuae_pointer.py"
 command -v xdotool >/dev/null 2>&1 || { echo "SKIP: no xdotool"; exit 77; }
 
 extra=$(mktemp -d "$S/lagoon-prefs-dh0.XXXXXX")
-mkdir -p "$extra/ENVARC/Lagoon" "$extra/ENV/Lagoon" "$extra/C"
+mkdir -p "$extra/ENVARC/Lagoon" "$extra/ENV/Lagoon" "$extra/C" "$extra/L"
+[ -f "$top/build/amiga/lagoon-handler" ] && cp "$top/build/amiga/lagoon-handler" "$extra/L/"
 cat > "$extra/ENVARC/Lagoon/lagoon.conf" <<'CONF'
 # Lagoon shares (emulator test)
 share name="NAS" url="smb://nas.local/Public" user="bob" automount=yes
@@ -54,7 +55,9 @@ PATH=$VBCC/bin:$PATH VBCC=$VBCC "$VBCC/bin/vc" +aos68k -O2 -I/opt/amiga/ndk/Incl
 	echo "as2|DH0:C/tassign ENVARC DH0:ENVARC"
 	echo "as3|DH0:C/tassign T DH0:T"
 	echo "as4|DH0:C/tassign LOCALE DH0:Locale"
+	echo "as5|DH0:C/tassign L DH0:L"
 	echo "prefs|DH0:C/LagoonPrefs $largs DEBUG"
+	echo "after|List lagoon:"
 } > "$cmds"
 # FS-UAE turns the cursor keys into a joystick unless told otherwise
 fx="joystick_port_1 = none"
@@ -97,7 +100,18 @@ CONF
 	nmbd -F --debug-stdout -d 3 --no-process-group -s "$nbdir/smb.conf" > "$out/nmbd.log" 2>&1 &
 	nbpid=$!
 fi
+# an AFP server for List, Test and Mount (tests/servers/afp/netatalk.sh)
+afpdir=$(mktemp -d /tmp/lgafp.XXXXXX)
+afp=0
+afp_ok=0
+if "$top/tests/servers/afp/netatalk.sh" start "$afpdir" 548 192.168.78.1 > "$out/netatalk.log" 2>&1; then
+	afp=1
+	afp_ok=1
+	echo "hello from netatalk" > "$afpdir/vol/hello.txt"
+fi
 cleanup() {
+	[ "$afp" = 1 ] && "$top/tests/servers/afp/netatalk.sh" stop "$afpdir" >/dev/null 2>&1
+	afp=0
 	[ -n "$rpid" ] && kill $rpid 2>/dev/null
 	[ -n "$nbpid" ] && kill $nbpid 2>/dev/null
 	rpid= nbpid=
@@ -175,6 +189,38 @@ else
 	shot 07-editor-from-browse
 	key Escape
 	sleep 1
+	if [ "$afp" = 1 ]; then
+		# AFP share: List (pick window), Test, OK, Mount, Unmount, Mount
+		key a
+		sleep 2
+		key p v
+		typ 192.168.78.1
+		key Return e
+		typ lagoon
+		key Return w
+		typ lagoon-test-pw
+		key Return l
+		sleep 4
+		shot 08-pick
+		key Return
+		sleep 1
+		key t
+		sleep 5
+		shot 09-test
+		key Return
+		sleep 1
+		shot 09b-test-done
+		key o
+		sleep 1
+		key m
+		sleep 5
+		shot 10-mounted
+		key m
+		sleep 3
+		shot 11-unmounted
+		key m
+		sleep 5
+	fi
 	key s
 fi
 t=0
@@ -198,6 +244,10 @@ grep -q 'name="Linux" url="nfs://192.168.78.1/srv/lagoon?uid=1000&gid=1000"' "$c
 cmp -s "$conf" "$work/dh0/ENV/Lagoon/lagoon.conf" || fail "ENV: and ENVARC: differ"
 [ -f "$conf.bak" ] || fail "no lagoon.conf.bak"
 grep -q "query from 192.168.78.2" "$out/responder.log" || fail "no mDNS query from the Amiga"
+if [ "$afp_ok" = 1 ]; then
+	grep -q 'name="lagoon" url="afp://192.168.78.1/lagoon" user="lagoon" pass="~' "$conf" || fail "AFP share not saved"
+	grep -q "hello.txt" "$work/dh0/out/after" || fail "AFP share not mounted after Save: $(cat "$work/dh0/out/after")"
+fi
 echo "output: $out (emulator work dir $work)"
 [ $fails -eq 0 ] && echo "ok   LagoonPrefs on the emulator ($mode${lang:+, $lang})"
 exit $fails

@@ -264,17 +264,9 @@ MSG_REQ_REMOVE
 Rimuovi|Annulla
 ; Remove|Cancel
 ;
-MSG_REQ_USE
-Usa|Annulla
-; Use|Cancel
-;
 MSG_ASK_REMOVE
 Rimuovere la condivisione %s?
 ; Remove the share %s?
-;
-MSG_ASK_USE
-L'elenco delle condivisioni ha modifiche non ancora in uso.\nLagoon monta le condivisioni di ENV:, quindi prima\nverranno usate (scritte in ENV:).
-; The share list has changes that are not in use yet.\nLagoon mounts the shares in ENV:, so they will be\nused (written to ENV:) first.
 ;
 MSG_ERR_WINDOW
 Impossibile aprire la finestra.

@@ -8,7 +8,8 @@
  * "Save" writes ENVARC:Lagoon/lagoon.conf (the old one becomes
  * lagoon.conf.bak) and ENV:, "Use" writes ENV: only, "Cancel" nothing.
  * USE or SAVE on the command line copies FROM (or ENV:) without opening the
- * window, like the system prefs editors. Mount/Unmount run C:Lagoon.
+ * window, like the system prefs editors. Mount/Unmount use src/amiga/mount.c
+ * (like C:Lagoon) with the share as it is in the list, saved or not.
  * LANGUAGE picks a catalog other than the Locale prefs' (e.g. deutsch).
  * The layout follows the screen font and falls back to topaz 8 when the
  * windows would not fit the screen (640x200 is the smallest supported).
@@ -17,21 +18,18 @@
 #include <workbench/startup.h>
 #include <libraries/asl.h>
 #include <proto/asl.h>
-#include <dos/dostags.h>
 #include "prefs.h"
 #include "ln_net.h"
 #include "ln_mdns.h"
+#include "mount.h"
 
 const char lagoonprefs_version[] = "$VER: LagoonPrefs " LP_VERSION " (30.10.2026)";
 size_t __stack = 32768;          /* vbcc start-up: the backends' Test needs room */
 
-/* net_amiga.c resolves *.local through this when the stack cannot */
-extern int (*ln_mdns_resolve_hook)(const char *name, LnAddr *out, int max);
 
 LnConf lp_conf;
 struct Window *lp_main;
 static const char *from_path;
-static int dirty;                /* changed since loaded or last written to ENV: */
 static int sel = -1;
 static int stale;                /* gadgets rebuilt: queued gadget messages are old */
 static struct Gadget *glist, *g_list, *g_info;
@@ -175,49 +173,45 @@ static int store(int save)
 		return -1;
 	if (write_conf(LP_ENV_CONF, 0) < 0)
 		return -1;
-	dirty = 0;
 	return 0;
 }
 
-/* ---- running C:Lagoon ---- */
-static int run_lagoon(const char *verb, const char *name)
+/* ---- mounting (src/amiga/mount.c, the same code C:Lagoon uses) ---- */
+/* the DOS device a share is mounted as ("" = not mounted) */
+static int mounted_dev(const LnShare *s, char *dev, size_t n)
 {
-	char cmd[120], *out;
-	const char *tmp = "T:LagoonPrefs.out";
-	BPTR o, in;
-	LONG rc;
-	struct TagItem t[4];
-	struct Requester rq;
-	ln_snprintf(cmd, sizeof(cmd), "Lagoon %s \"%s\"", verb, name);
-	o = Open((STRPTR)tmp, MODE_NEWFILE);
-	in = Open((STRPTR)"NIL:", MODE_OLDFILE);
-	t[0].ti_Tag = SYS_Output;
-	t[0].ti_Data = (ULONG)o;
-	t[1].ti_Tag = SYS_Input;
-	t[1].ti_Data = (ULONG)in;
-	t[2].ti_Tag = NP_StackSize;
-	t[2].ti_Data = 32768;
-	t[3].ti_Tag = TAG_DONE;
-	lp_block(lp_main, &rq);
-	rc = (o && in) ? SystemTagList((STRPTR)cmd, t) : -1;
-	lp_unblock(lp_main, &rq);
-	if (o)
-		Close(o);
-	if (in)
-		Close(in);
-	if (rc != 0) {
-		out = read_file(tmp);
-		if (out) {
-			if (strlen(out) > 400)
-				out[400] = 0;
-			lp_message(lp_main, S(MSG_ERR_COMMAND), cmd, out[0] ? out : "?");
-			FreeVec(out);
-		} else {
-			lp_message(lp_main, S(MSG_ERR_COMMAND), cmd, "?");
-		}
+	if (ln_amiga_find_mount(s->name, dev, n))
+		return 1;
+	if (lp_device_mounted(s->name)) {          /* e.g. from a DOSDriver */
+		ln_strlcpy(dev, s->name, n);
+		return 1;
 	}
-	DeleteFile((STRPTR)tmp);
-	return rc == 0 ? 0 : -1;
+	return 0;
+}
+
+static void mount_share(const LnShare *s)
+{
+	char dev[32], err[160];
+	struct Requester rq;
+	int r;
+	err[0] = 0;
+	if (lp_net(lp_main) != LN_OK)
+		return;
+	lp_block(lp_main, &rq);
+	r = ln_amiga_mount(s, NULL, dev, sizeof(dev), err, sizeof(err));
+	lp_unblock(lp_main, &rq);
+	if (r != LN_OK)
+		lp_message(lp_main, S(MSG_TEST_FAIL), s->name, err[0] ? err : ln_strerror(r));
+}
+
+static void unmount_share(const char *dev)
+{
+	char err[160];
+	int r;
+	err[0] = 0;
+	r = ln_amiga_unmount(dev, err, sizeof(err));
+	if (r != LN_OK)
+		lp_message(lp_main, S(MSG_ERR_COMMAND), "Unmount", err[0] ? err : ln_strerror(r));
 }
 
 /* ---- the share list ---- */
@@ -248,7 +242,8 @@ static void fill_list(void)
 	for (i = 0; i < lp_conf.nshares; i++) {
 		const LnShare *s = &lp_conf.share[i];
 		where(s, w, sizeof(w));
-		if (lp_device_mounted(s->name))
+		char dev[32];
+		if (mounted_dev(s, dev, sizeof(dev)))
 			ln_strlcpy(st, S(MSG_STATE_MOUNTED), sizeof(st));
 		else if (s->automount)
 			ln_strlcpy(st, S(MSG_STATE_STARTUP), sizeof(st));
@@ -276,7 +271,10 @@ static const char *btn_label(int id)
 	case G_ADD: return S(MSG_ADD);
 	case G_EDIT: return S(MSG_EDIT);
 	case G_REMOVE: return S(MSG_REMOVE);
-	case G_MOUNT: return sel >= 0 && lp_device_mounted(lp_conf.share[sel].name) ? S(MSG_UNMOUNT) : S(MSG_MOUNT);
+	case G_MOUNT: {
+		char dev[32];
+		return sel >= 0 && mounted_dev(&lp_conf.share[sel], dev, sizeof(dev)) ? S(MSG_UNMOUNT) : S(MSG_MOUNT);
+	}
 	case G_BROWSE: return S(MSG_BROWSE);
 	case G_SAVE: return S(MSG_SAVE);
 	case G_USE: return S(MSG_USE);
@@ -499,7 +497,6 @@ static void edit(int index)
 		} else if (ln_conf_put(&lp_conf, &s) != LN_OK) {
 			lp_message(lp_main, "%s", S(MSG_ERR_FULL));
 		}
-		dirty = 1;
 		{
 			LnShare *p = ln_conf_find(&lp_conf, s.name);
 			sel = p ? (int)(p - lp_conf.share) : sel;
@@ -524,7 +521,6 @@ static void browse(void)
 		else {
 			LnShare *p = ln_conf_find(&lp_conf, s.name);
 			sel = p ? (int)(p - lp_conf.share) : sel;
-			dirty = 1;
 		}
 	}
 	ln_wipe(&s, sizeof(s));
@@ -539,28 +535,19 @@ static void remove_share(void)
 	if (!lp_request(lp_main, S(MSG_REQ_REMOVE), S(MSG_ASK_REMOVE), lp_conf.share[sel].name))
 		return;
 	ln_conf_remove(&lp_conf, lp_conf.share[sel].name);
-	dirty = 1;
 	build();
 }
 
 static void mount_toggle(void)
 {
-	const char *name;
+	char dev[32];
 	if (sel < 0)
 		return;
-	name = lp_conf.share[sel].name;
-	if (lp_device_mounted(name)) {
-		run_lagoon("UNMOUNT", name);
-	} else {
-		/* C:Lagoon reads ENV:Lagoon/lagoon.conf */
-		if (dirty) {
-			if (!lp_request(lp_main, S(MSG_REQ_USE), "%s", S(MSG_ASK_USE)))
-				return;
-			if (store(0) < 0)
-				return;
-		}
-		run_lagoon("MOUNT", name);
-	}
+	/* the share as it is in the list now, saved or not */
+	if (mounted_dev(&lp_conf.share[sel], dev, sizeof(dev)))
+		unmount_share(dev);
+	else
+		mount_share(&lp_conf.share[sel]);
 	build();
 }
 
@@ -582,7 +569,6 @@ static int menu_pick(UWORD code)
 		switch ((int)(ULONG)GTMENUITEM_USERDATA(it)) {
 		case M_OPEN:
 			if (file_req(0, path, sizeof(path)) && load(path, 0) == 0) {
-				dirty = 1;
 				sel = -1;
 			}
 			build();
@@ -593,19 +579,16 @@ static int menu_pick(UWORD code)
 			break;
 		case M_LASTSAVED:
 			load(LP_ENVARC_CONF, 1);
-			dirty = 1;
 			sel = -1;
 			build();
 			break;
 		case M_RESTORE:
 			load(from_path, 1);
-			dirty = 1;
 			sel = -1;
 			build();
 			break;
 		case M_RESET:
 			ln_conf_init(&lp_conf);
-			dirty = 1;
 			sel = -1;
 			build();
 			break;

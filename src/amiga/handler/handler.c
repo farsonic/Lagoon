@@ -35,6 +35,7 @@
 #include "ln_conf.h"
 #include "ln_charset.h"
 #include "mount.h"
+#include "ln_mdns.h"
 
 struct ExecBase *SysBase;
 struct DosLibrary *DOSBase;
@@ -696,6 +697,7 @@ static int startup(struct DosPacket *pkt)
 		ln_log_file = g->logname;
 	}
 	LN_LOG(1, "lagoon-handler starting for %s: (%s)", g->device, g->share.url);
+	ln_mdns_resolve_hook = ln_mdns_resolve;    /* nas.local without a DNS server */
 	if (r == LN_OK)
 		r = ln_net_init();
 	MARK("net init done");

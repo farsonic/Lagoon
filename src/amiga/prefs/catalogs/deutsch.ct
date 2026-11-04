@@ -264,17 +264,9 @@ MSG_REQ_REMOVE
 Entfernen|Abbrechen
 ; Remove|Cancel
 ;
-MSG_REQ_USE
-Benutzen|Abbrechen
-; Use|Cancel
-;
 MSG_ASK_REMOVE
 Die Freigabe %s entfernen?
 ; Remove the share %s?
-;
-MSG_ASK_USE
-Die Freigabeliste hat Änderungen, die noch nicht benutzt werden.\nLagoon meldet die Freigaben aus ENV: an, daher werden\nsie zuerst benutzt (nach ENV: geschrieben).
-; The share list has changes that are not in use yet.\nLagoon mounts the shares in ENV:, so they will be\nused (written to ENV:) first.
 ;
 MSG_ERR_WINDOW
 Das Fenster kann nicht geöffnet werden.

@@ -264,17 +264,9 @@ MSG_REQ_REMOVE
 Retirer|Annuler
 ; Remove|Cancel
 ;
-MSG_REQ_USE
-Utiliser|Annuler
-; Use|Cancel
-;
 MSG_ASK_REMOVE
 Retirer le partage %s ?
 ; Remove the share %s?
-;
-MSG_ASK_USE
-La liste de partages a des modifications non utilisées.\nLagoon monte les partages de ENV:, elles seront donc\nd'abord utilisées (écrites dans ENV:).
-; The share list has changes that are not in use yet.\nLagoon mounts the shares in ENV:, so they will be\nused (written to ENV:) first.
 ;
 MSG_ERR_WINDOW
 Impossible d'ouvrir la fenêtre.

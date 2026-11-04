@@ -28,6 +28,7 @@
 #include "ln_net.h"
 #include "ln_conf.h"
 #include "mount.h"
+#include "ln_mdns.h"
 
 static const char version[] = "$VER: Lagoon 0.1 (30.10.2026)";
 
@@ -471,6 +472,7 @@ int main(void)
 	const char *cmd;
 	int rc;
 	(void)version;
+	ln_mdns_resolve_hook = ln_mdns_resolve;    /* nas.local without a DNS server */
 	memset(args, 0, sizeof(args));
 	rd = ReadArgs((STRPTR)TEMPLATE, args, NULL);
 	if (!rd) {

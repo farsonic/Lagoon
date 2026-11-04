@@ -203,14 +203,8 @@ OK
 MSG_REQ_REMOVE (//)
 Remove|Cancel
 ;
-MSG_REQ_USE (//)
-Use|Cancel
-;
 MSG_ASK_REMOVE (//)
 Remove the share %s?
-;
-MSG_ASK_USE (//)
-The share list has changes that are not in use yet.\nLagoon mounts the shares in ENV:, so they will be\nused (written to ENV:) first.
 ;
 MSG_ERR_WINDOW (//)
 Cannot open the window.
