@@ -12,7 +12,18 @@ static void xorblk(u8 *x, const u8 *p, size_t n)
 		x[i] ^= p[i];
 }
 
-/* CBC-MAC of B0 | encoded AAD | data into x */
+/* CBC-MAC of B0 | encoded AAD | data into x (whole blocks in bulk, tails zero padded) */
+static void mac_part(const LnAes *a, u8 x[16], const u8 *p, size_t n)
+{
+	u8 b[16];
+	ln_aes_cbcmac(a, x, p, n / 16);
+	if (n & 15) {
+		memset(b, 0, 16);
+		memcpy(b, p + (n & ~(size_t)15), n & 15);
+		ln_aes_cbcmac(a, x, b, 1);
+	}
+}
+
 static void ccm_mac(const LnAes *a, const u8 *nonce, int nlen, const u8 *aad, size_t alen,
                     const u8 *data, size_t n, int tlen, u8 x[16])
 {
@@ -37,39 +48,31 @@ static void ccm_mac(const LnAes *a, const u8 *nonce, int nlen, const u8 *aad, si
 		}
 		m = LN_MIN(alen, 16 - k);
 		memcpy(b + k, aad, m);
-		xorblk(x, b, 16);
-		ln_aes_encrypt(a, x, x);
-		for (aad += m, alen -= m; alen; aad += m, alen -= m) {
-			m = LN_MIN(alen, 16);
-			xorblk(x, aad, m);
-			ln_aes_encrypt(a, x, x);
-		}
+		ln_aes_cbcmac(a, x, b, 1);
+		mac_part(a, x, aad + m, alen - m);
 	}
-	for (; n; data += m, n -= m) {
-		m = LN_MIN(n, 16);
-		xorblk(x, data, m);
-		ln_aes_encrypt(a, x, x);
-	}
+	mac_part(a, x, data, n);
 }
 
-/* CTR keystream: counter block i (0 encrypts the tag) */
+/* CTR keystream: counter block i (0 encrypts the tag). The counter field
+ * (the last L bytes) never overflows, so a 32-bit increment is the same. */
 static void ccm_ctr(const LnAes *a, const u8 *nonce, int nlen, u8 *data, size_t n, u8 s0[16])
 {
-	int L = 15 - nlen, i;
+	int L = 15 - nlen;
 	u8 ctr[16], ks[16];
-	u32 c = 0;
-	size_t m;
+	size_t m = n & 15, i;
 	memset(ctr, 0, 16);
 	ctr[0] = (u8)(L - 1);
 	memcpy(ctr + 1, nonce, (size_t)nlen);
 	ln_aes_encrypt(a, ctr, s0);
-	for (; n; data += m, n -= m) {
-		c++;
-		for (i = 0; i < L && i < 4; i++)
-			ctr[15 - i] = (u8)(c >> (8 * i));
-		ln_aes_encrypt(a, ctr, ks);
-		m = LN_MIN(n, 16);
-		xorblk(data, ks, m);
+	ln_aes_ctr32(a, ctr, data, n / 16);
+	if (m) {
+		data += n - m;
+		memset(ks, 0, 16);
+		memcpy(ks, data, m);
+		ln_aes_ctr32(a, ctr, ks, 1);
+		for (i = 0; i < m; i++)
+			data[i] = ks[i];
 	}
 }
 

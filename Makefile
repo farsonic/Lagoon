@@ -76,3 +76,10 @@ package: all amiga
 build/amiga/lncli: tests/lncli.c build/amiga/liblagoon.lib
 	$(VC) $(ACFLAGS) -o $@ tests/lncli.c build/amiga/liblagoon.lib -lamiga
 amiga: build/amiga/lncli
+
+# crypto throughput benchmark (tests/amiga/cryptobench.c): run it under
+# vamos -C 68020 or in the emulator; the host build is for comparing digests
+build/amiga/cryptobench: tests/amiga/cryptobench.c build/amiga/liblagoon.lib
+	$(VC) $(ACFLAGS) -o $@ tests/amiga/cryptobench.c build/amiga/liblagoon.lib -lamiga
+build/host/cryptobench: tests/amiga/cryptobench.c build/host/liblagoon.a
+	$(CC) $(HCFLAGS) -o $@ $< build/host/liblagoon.a

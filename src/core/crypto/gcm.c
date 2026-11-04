@@ -1,49 +1,57 @@
 /*
  * Lagoon - AES-GCM and GMAC (NIST SP 800-38D), used for SMB 3.1.1
  * encryption and AES-GMAC signing. GHASH uses a 256-entry (8-bit) table
- * per key (4 KB) and 32-bit words only: half the work of a 4-bit table on
- * the 68020, where GMAC signing of every message is the main cost. Written from the
- * spec; the reduction table holds the constant products of the 8 bits
- * shifted out with the GCM polynomial.
+ * per key (4 KB) and 32-bit words only (Shoup's method with 8-bit digits:
+ * 16 steps of a byte shift, one reduction lookup and one table row per
+ * block, against 32 steps with 4-bit shifts for the 4-bit table, which
+ * costs more on a 68k: byte shifts are cheap move.b/ror there). Written
+ * from the spec; the reduction table holds the constant products of the
+ * 8 bits shifted out with the GCM polynomial. The Amiga build takes
+ * ln_ghash_blocks from ghash68k.s.
  * SPDX-License-Identifier: GPL-2.0-only
  */
 #include "../ln_cipher.h"
 
-/* red8[r]: what the 8 bits r shifted out of Z (Z * x^8) fold back into its top 16 bits */
-static const u16 red8[256] = {
-	0x0000, 0x01c2, 0x0384, 0x0246, 0x0708, 0x06ca, 0x048c, 0x054e,
-	0x0e10, 0x0fd2, 0x0d94, 0x0c56, 0x0918, 0x08da, 0x0a9c, 0x0b5e,
-	0x1c20, 0x1de2, 0x1fa4, 0x1e66, 0x1b28, 0x1aea, 0x18ac, 0x196e,
-	0x1230, 0x13f2, 0x11b4, 0x1076, 0x1538, 0x14fa, 0x16bc, 0x177e,
-	0x3840, 0x3982, 0x3bc4, 0x3a06, 0x3f48, 0x3e8a, 0x3ccc, 0x3d0e,
-	0x3650, 0x3792, 0x35d4, 0x3416, 0x3158, 0x309a, 0x32dc, 0x331e,
-	0x2460, 0x25a2, 0x27e4, 0x2626, 0x2368, 0x22aa, 0x20ec, 0x212e,
-	0x2a70, 0x2bb2, 0x29f4, 0x2836, 0x2d78, 0x2cba, 0x2efc, 0x2f3e,
-	0x7080, 0x7142, 0x7304, 0x72c6, 0x7788, 0x764a, 0x740c, 0x75ce,
-	0x7e90, 0x7f52, 0x7d14, 0x7cd6, 0x7998, 0x785a, 0x7a1c, 0x7bde,
-	0x6ca0, 0x6d62, 0x6f24, 0x6ee6, 0x6ba8, 0x6a6a, 0x682c, 0x69ee,
-	0x62b0, 0x6372, 0x6134, 0x60f6, 0x65b8, 0x647a, 0x663c, 0x67fe,
-	0x48c0, 0x4902, 0x4b44, 0x4a86, 0x4fc8, 0x4e0a, 0x4c4c, 0x4d8e,
-	0x46d0, 0x4712, 0x4554, 0x4496, 0x41d8, 0x401a, 0x425c, 0x439e,
-	0x54e0, 0x5522, 0x5764, 0x56a6, 0x53e8, 0x522a, 0x506c, 0x51ae,
-	0x5af0, 0x5b32, 0x5974, 0x58b6, 0x5df8, 0x5c3a, 0x5e7c, 0x5fbe,
-	0xe100, 0xe0c2, 0xe284, 0xe346, 0xe608, 0xe7ca, 0xe58c, 0xe44e,
-	0xef10, 0xeed2, 0xec94, 0xed56, 0xe818, 0xe9da, 0xeb9c, 0xea5e,
-	0xfd20, 0xfce2, 0xfea4, 0xff66, 0xfa28, 0xfbea, 0xf9ac, 0xf86e,
-	0xf330, 0xf2f2, 0xf0b4, 0xf176, 0xf438, 0xf5fa, 0xf7bc, 0xf67e,
-	0xd940, 0xd882, 0xdac4, 0xdb06, 0xde48, 0xdf8a, 0xddcc, 0xdc0e,
-	0xd750, 0xd692, 0xd4d4, 0xd516, 0xd058, 0xd19a, 0xd3dc, 0xd21e,
-	0xc560, 0xc4a2, 0xc6e4, 0xc726, 0xc268, 0xc3aa, 0xc1ec, 0xc02e,
-	0xcb70, 0xcab2, 0xc8f4, 0xc936, 0xcc78, 0xcdba, 0xcffc, 0xce3e,
-	0x9180, 0x9042, 0x9204, 0x93c6, 0x9688, 0x974a, 0x950c, 0x94ce,
-	0x9f90, 0x9e52, 0x9c14, 0x9dd6, 0x9898, 0x995a, 0x9b1c, 0x9ade,
-	0x8da0, 0x8c62, 0x8e24, 0x8fe6, 0x8aa8, 0x8b6a, 0x892c, 0x88ee,
-	0x83b0, 0x8272, 0x8034, 0x81f6, 0x84b8, 0x857a, 0x873c, 0x86fe,
-	0xa9c0, 0xa802, 0xaa44, 0xab86, 0xaec8, 0xaf0a, 0xad4c, 0xac8e,
-	0xa7d0, 0xa612, 0xa454, 0xa596, 0xa0d8, 0xa11a, 0xa35c, 0xa29e,
-	0xb5e0, 0xb422, 0xb664, 0xb7a6, 0xb2e8, 0xb32a, 0xb16c, 0xb0ae,
-	0xbbf0, 0xba32, 0xb874, 0xb9b6, 0xbcf8, 0xbd3a, 0xbf7c, 0xbebe,
+/* red8[r]: what the 8 bits r shifted out of Z (Z * x^8) fold back into its
+ * top word: the GCM polynomial products, already shifted into bits 16..31.
+ * Shared with ghash68k.s. */
+const u32 ln_gcm_red8[256] = {
+	0x00000000u, 0x01c20000u, 0x03840000u, 0x02460000u, 0x07080000u, 0x06ca0000u, 0x048c0000u, 0x054e0000u,
+	0x0e100000u, 0x0fd20000u, 0x0d940000u, 0x0c560000u, 0x09180000u, 0x08da0000u, 0x0a9c0000u, 0x0b5e0000u,
+	0x1c200000u, 0x1de20000u, 0x1fa40000u, 0x1e660000u, 0x1b280000u, 0x1aea0000u, 0x18ac0000u, 0x196e0000u,
+	0x12300000u, 0x13f20000u, 0x11b40000u, 0x10760000u, 0x15380000u, 0x14fa0000u, 0x16bc0000u, 0x177e0000u,
+	0x38400000u, 0x39820000u, 0x3bc40000u, 0x3a060000u, 0x3f480000u, 0x3e8a0000u, 0x3ccc0000u, 0x3d0e0000u,
+	0x36500000u, 0x37920000u, 0x35d40000u, 0x34160000u, 0x31580000u, 0x309a0000u, 0x32dc0000u, 0x331e0000u,
+	0x24600000u, 0x25a20000u, 0x27e40000u, 0x26260000u, 0x23680000u, 0x22aa0000u, 0x20ec0000u, 0x212e0000u,
+	0x2a700000u, 0x2bb20000u, 0x29f40000u, 0x28360000u, 0x2d780000u, 0x2cba0000u, 0x2efc0000u, 0x2f3e0000u,
+	0x70800000u, 0x71420000u, 0x73040000u, 0x72c60000u, 0x77880000u, 0x764a0000u, 0x740c0000u, 0x75ce0000u,
+	0x7e900000u, 0x7f520000u, 0x7d140000u, 0x7cd60000u, 0x79980000u, 0x785a0000u, 0x7a1c0000u, 0x7bde0000u,
+	0x6ca00000u, 0x6d620000u, 0x6f240000u, 0x6ee60000u, 0x6ba80000u, 0x6a6a0000u, 0x682c0000u, 0x69ee0000u,
+	0x62b00000u, 0x63720000u, 0x61340000u, 0x60f60000u, 0x65b80000u, 0x647a0000u, 0x663c0000u, 0x67fe0000u,
+	0x48c00000u, 0x49020000u, 0x4b440000u, 0x4a860000u, 0x4fc80000u, 0x4e0a0000u, 0x4c4c0000u, 0x4d8e0000u,
+	0x46d00000u, 0x47120000u, 0x45540000u, 0x44960000u, 0x41d80000u, 0x401a0000u, 0x425c0000u, 0x439e0000u,
+	0x54e00000u, 0x55220000u, 0x57640000u, 0x56a60000u, 0x53e80000u, 0x522a0000u, 0x506c0000u, 0x51ae0000u,
+	0x5af00000u, 0x5b320000u, 0x59740000u, 0x58b60000u, 0x5df80000u, 0x5c3a0000u, 0x5e7c0000u, 0x5fbe0000u,
+	0xe1000000u, 0xe0c20000u, 0xe2840000u, 0xe3460000u, 0xe6080000u, 0xe7ca0000u, 0xe58c0000u, 0xe44e0000u,
+	0xef100000u, 0xeed20000u, 0xec940000u, 0xed560000u, 0xe8180000u, 0xe9da0000u, 0xeb9c0000u, 0xea5e0000u,
+	0xfd200000u, 0xfce20000u, 0xfea40000u, 0xff660000u, 0xfa280000u, 0xfbea0000u, 0xf9ac0000u, 0xf86e0000u,
+	0xf3300000u, 0xf2f20000u, 0xf0b40000u, 0xf1760000u, 0xf4380000u, 0xf5fa0000u, 0xf7bc0000u, 0xf67e0000u,
+	0xd9400000u, 0xd8820000u, 0xdac40000u, 0xdb060000u, 0xde480000u, 0xdf8a0000u, 0xddcc0000u, 0xdc0e0000u,
+	0xd7500000u, 0xd6920000u, 0xd4d40000u, 0xd5160000u, 0xd0580000u, 0xd19a0000u, 0xd3dc0000u, 0xd21e0000u,
+	0xc5600000u, 0xc4a20000u, 0xc6e40000u, 0xc7260000u, 0xc2680000u, 0xc3aa0000u, 0xc1ec0000u, 0xc02e0000u,
+	0xcb700000u, 0xcab20000u, 0xc8f40000u, 0xc9360000u, 0xcc780000u, 0xcdba0000u, 0xcffc0000u, 0xce3e0000u,
+	0x91800000u, 0x90420000u, 0x92040000u, 0x93c60000u, 0x96880000u, 0x974a0000u, 0x950c0000u, 0x94ce0000u,
+	0x9f900000u, 0x9e520000u, 0x9c140000u, 0x9dd60000u, 0x98980000u, 0x995a0000u, 0x9b1c0000u, 0x9ade0000u,
+	0x8da00000u, 0x8c620000u, 0x8e240000u, 0x8fe60000u, 0x8aa80000u, 0x8b6a0000u, 0x892c0000u, 0x88ee0000u,
+	0x83b00000u, 0x82720000u, 0x80340000u, 0x81f60000u, 0x84b80000u, 0x857a0000u, 0x873c0000u, 0x86fe0000u,
+	0xa9c00000u, 0xa8020000u, 0xaa440000u, 0xab860000u, 0xaec80000u, 0xaf0a0000u, 0xad4c0000u, 0xac8e0000u,
+	0xa7d00000u, 0xa6120000u, 0xa4540000u, 0xa5960000u, 0xa0d80000u, 0xa11a0000u, 0xa35c0000u, 0xa29e0000u,
+	0xb5e00000u, 0xb4220000u, 0xb6640000u, 0xb7a60000u, 0xb2e80000u, 0xb32a0000u, 0xb16c0000u, 0xb0ae0000u,
+	0xbbf00000u, 0xba320000u, 0xb8740000u, 0xb9b60000u, 0xbcf80000u, 0xbd3a0000u, 0xbf7c0000u, 0xbebe0000u,
 };
+
+/* y = (y ^ block) * H for nblk whole blocks (C here, ghash68k.s on the Amiga) */
+void ln_ghash_blocks(const LnGcm *g, u32 y[4], const u8 *p, size_t nblk);
 
 int ln_gcm_setkey(LnGcm *g, const u8 *key, int keylen)
 {
@@ -56,11 +64,12 @@ int ln_gcm_setkey(LnGcm *g, const u8 *key, int keylen)
 	ln_aes_encrypt(&g->aes, h, h);
 	for (i = 0; i < 4; i++)
 		v[i] = ln_be32(h + 4 * i);
-	/* m[128] = H, m[64] = H*x, ... m[1] = H*x^7 (bit-reflected order), then all sums */
-	memset(g->m, 0, sizeof(g->m));
+	/* row 128 = H, 64 = H*x, ... 1 = H*x^7 (bit-reflected order), then all sums */
+	memset(g->mh, 0, sizeof(g->mh));
+	memset(g->ml, 0, sizeof(g->ml));
 	for (i = 128; i; i >>= 1) {
 		u32 lsb = v[3] & 1;
-		memcpy(g->m[i], v, sizeof(v));
+		g->mh[i][0] = v[0]; g->mh[i][1] = v[1]; g->ml[i][0] = v[2]; g->ml[i][1] = v[3];
 		v[3] = (v[3] >> 1) | (v[2] << 31);
 		v[2] = (v[2] >> 1) | (v[1] << 31);
 		v[1] = (v[1] >> 1) | (v[0] << 31);
@@ -68,58 +77,67 @@ int ln_gcm_setkey(LnGcm *g, const u8 *key, int keylen)
 	}
 	for (i = 2; i < 256; i <<= 1)
 		for (j = 1; j < i; j++) {
-			int k;
-			for (k = 0; k < 4; k++)
-				g->m[i + j][k] = g->m[i][k] ^ g->m[j][k];
+			g->mh[i + j][0] = g->mh[i][0] ^ g->mh[j][0];
+			g->mh[i + j][1] = g->mh[i][1] ^ g->mh[j][1];
+			g->ml[i + j][0] = g->ml[i][0] ^ g->ml[j][0];
+			g->ml[i + j][1] = g->ml[i][1] ^ g->ml[j][1];
 		}
+	ln_wipe(v, sizeof(v));
 	ln_wipe(h, 16);
 	return 0;
 }
 
-/* y = (y ^ blk) * H, one byte (8-bit table) at a time, Horner from the last byte */
-static void ghash_blk(const LnGcm *g, u32 y[4], const u8 *blk, size_t n)
+#ifndef LN_CRYPTO_ASM
+/* one byte (8-bit table) at a time, Horner from the last byte */
+void ln_ghash_blocks(const LnGcm *g, u32 y[4], const u8 *p, size_t nblk)
 {
 	u8 x[16];
-	u32 z0, z1, z2, z3, rem;
-	const u32 *m;
+	u32 z0 = y[0], z1 = y[1], z2 = y[2], z3 = y[3], rem;
 	int i;
-	memset(x, 0, 16);
-	memcpy(x, blk, n);
-	for (i = 0; i < 4; i++)
-		ln_put_be32(x + 4 * i, ln_be32(x + 4 * i) ^ y[i]);
-	m = g->m[x[15]];
-	z0 = m[0]; z1 = m[1]; z2 = m[2]; z3 = m[3];
-	for (i = 14; i >= 0; i--) {
-		rem = z3 & 255;
-		z3 = (z3 >> 8) | (z2 << 24);
-		z2 = (z2 >> 8) | (z1 << 24);
-		z1 = (z1 >> 8) | (z0 << 24);
-		z0 = (z0 >> 8) ^ ((u32)red8[rem] << 16);
-		m = g->m[x[i]];
-		z0 ^= m[0]; z1 ^= m[1]; z2 ^= m[2]; z3 ^= m[3];
+	for (; nblk; nblk--, p += 16) {
+		ln_put_be32(x, ln_be32(p) ^ z0);
+		ln_put_be32(x + 4, ln_be32(p + 4) ^ z1);
+		ln_put_be32(x + 8, ln_be32(p + 8) ^ z2);
+		ln_put_be32(x + 12, ln_be32(p + 12) ^ z3);
+		z0 = g->mh[x[15]][0]; z1 = g->mh[x[15]][1]; z2 = g->ml[x[15]][0]; z3 = g->ml[x[15]][1];
+		for (i = 14; i >= 0; i--) {
+			rem = z3 & 255;
+			z3 = (z3 >> 8) | (z2 << 24);
+			z2 = (z2 >> 8) | (z1 << 24);
+			z1 = (z1 >> 8) | (z0 << 24);
+			z0 = (z0 >> 8) ^ ln_gcm_red8[rem];
+			z0 ^= g->mh[x[i]][0]; z1 ^= g->mh[x[i]][1];
+			z2 ^= g->ml[x[i]][0]; z3 ^= g->ml[x[i]][1];
+		}
 	}
 	y[0] = z0; y[1] = z1; y[2] = z2; y[3] = z3;
 }
+#endif
 
+/* whole blocks in one call, a partial tail zero padded */
 static void ghash(const LnGcm *g, u32 y[4], const u8 *p, size_t n)
 {
-	size_t m;
-	for (; n; p += m, n -= m) {
-		m = LN_MIN(n, 16);
-		ghash_blk(g, y, p, m);
+	u8 x[16];
+	ln_ghash_blocks(g, y, p, n / 16);
+	if (n & 15) {
+		memset(x, 0, 16);
+		memcpy(x, p + (n & ~(size_t)15), n & 15);
+		ln_ghash_blocks(g, y, x, 1);
 	}
 }
 
 static void ctr32(const LnGcm *g, u8 ctr[16], u8 *data, size_t n)
 {
 	u8 ks[16];
-	size_t m, i;
-	for (; n; data += m, n -= m) {
-		ln_put_be32(ctr + 12, ln_be32(ctr + 12) + 1);
-		ln_aes_encrypt(&g->aes, ctr, ks);
-		m = LN_MIN(n, 16);
+	size_t i, m = n & 15;
+	ln_aes_ctr32(&g->aes, ctr, data, n / 16);
+	if (m) {
+		data += n - m;
+		memset(ks, 0, 16);
+		memcpy(ks, data, m);
+		ln_aes_ctr32(&g->aes, ctr, ks, 1);
 		for (i = 0; i < m; i++)
-			data[i] ^= ks[i];
+			data[i] = ks[i];
 	}
 }
 
@@ -135,7 +153,7 @@ static void gtag(const LnGcm *g, const u8 iv[12], const u8 *aad, size_t alen, co
 	ln_put_be32(lens + 4, (u32)(alen << 3));
 	ln_put_be32(lens + 8, (u32)((u64)n >> 29));
 	ln_put_be32(lens + 12, (u32)(n << 3));
-	ghash_blk(g, y, lens, 16);
+	ln_ghash_blocks(g, y, lens, 1);
 	memcpy(j0, iv, 12);
 	ln_put_be32(j0 + 12, 1);
 	ln_aes_encrypt(&g->aes, j0, j0);

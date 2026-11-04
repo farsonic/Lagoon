@@ -6,6 +6,8 @@
  *
  * Memory: AES uses four 1 KB T-tables (shared, const); an LnAes key
  * schedule is 244 bytes; an LnGcm adds a 4 KB GHASH table.
+ * Speed: the Amiga build (LN_CRYPTO_ASM) takes the AES rounds and GHASH
+ * from 68020 assembly (aes68k.s, ghash68k.s); everything else is C.
  * SPDX-License-Identifier: GPL-2.0-only
  */
 #ifndef LN_CIPHER_H
@@ -21,6 +23,12 @@ typedef struct LnAes {
 /* keylen 16 or 32 bytes; returns 0, or -1 for a bad length */
 int  ln_aes_setkey(LnAes *a, const u8 *key, int keylen);
 void ln_aes_encrypt(const LnAes *a, const u8 in[16], u8 out[16]);
+/* bulk helpers over nblk whole 16-byte blocks:
+ * cbcmac: x = E(x ^ block) for each block (CMAC, CCM);
+ * ctr32:  for each block, ++(big-endian last word of ctr), data ^= E(ctr)
+ *         (GCM inc32, CCM); ctr is left at the last counter used */
+void ln_aes_cbcmac(const LnAes *a, u8 x[16], const u8 *p, size_t nblk);
+void ln_aes_ctr32(const LnAes *a, u8 ctr[16], u8 *data, size_t nblk);
 
 /* AES-CMAC over one contiguous message */
 void ln_aes_cmac(const LnAes *a, const void *msg, size_t n, u8 mac[16]);
@@ -36,7 +44,11 @@ int  ln_aes_ccm_decrypt(const LnAes *a, const u8 *nonce, int nlen, const u8 *aad
 /* AES-GCM with a 96-bit IV and 128-bit tag, in place */
 typedef struct LnGcm {
 	LnAes aes;
-	u32 m[256][4];           /* GHASH 8-bit multiplication table for H (4 KB) */
+	/* GHASH 8-bit multiplication table for H (4 KB): the product of H with
+	 * byte b is mh[b][0], mh[b][1], ml[b][0], ml[b][1] (most significant first),
+	 * split in two so 68k code can index both halves with a *8 scale */
+	u32 mh[256][2];
+	u32 ml[256][2];
 } LnGcm;
 int  ln_gcm_setkey(LnGcm *g, const u8 *key, int keylen);
 void ln_gcm_encrypt(const LnGcm *g, const u8 iv[12], const u8 *aad, size_t alen,
