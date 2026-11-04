@@ -180,7 +180,9 @@ Keys are expanded once per session. 3.1.1 always signs non-guest
 sessions, so on a trusted LAN where speed matters, `dialect=3.0.2` (or
 `3.0`) without `sign=required` avoids per-message MACs. This only works
 if the server does not require signing. Faster CPUs (68030/040/060)
-scale about with the clock, the 040/060 better (data caches).
+should scale at least with the clock (not measured: the emulator setup
+only boots the 68020 configuration); the 4 KB T-tables fit the 060's data
+cache.
 
 ## Tests
 

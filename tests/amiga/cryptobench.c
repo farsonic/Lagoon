@@ -43,7 +43,8 @@ static void t_aeskey(void)
 	int i;
 	for (i = 0; i < 64; i++)
 		ln_aes_setkey(&aes, buf + 16 * i, 16);
-	memcpy(out, aes.rk + 40, 16);
+	for (i = 0; i < 4; i++)
+		ln_put_be32(out + 4 * i, aes.rk[40 + i]);
 }
 
 static void run(const char *name, void (*f)(void), int rounds)
