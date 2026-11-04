@@ -48,6 +48,12 @@ for c in Assign Copy Date List Dir MakeDir Rename Delete Protect Filenote SetDat
 	[ -f "$AROS_C/$c" ] && cp "$AROS_C/$c" "$dh0/C/"
 done
 for f in "$@"; do cp "$f" "$dh0/C/"; done
+# Assign from the AROS system does not take effect on this ROM: tassign
+# (AssignLock) makes the assigns instead
+VBCC=${VBCC:-/opt/amiga/vbcc}
+here=$(cd "$(dirname "$0")" && pwd)
+PATH=$VBCC/bin:$PATH VBCC=$VBCC "$VBCC/bin/vc" +aos68k -O2 -I/opt/amiga/ndk/Include_H -o "$dh0/C/tassign" \
+	"$here/tassign.c" -lamiga >/dev/null || { echo "run_emu: cannot build tassign"; exit 1; }
 [ -n "${LAGOON_DH0_EXTRA:-}" ] && cp -r "$LAGOON_DH0_EXTRA"/. "$dh0/"
 cat > "$dh0/S/riptide.conf" <<CONF
 hostname lagoon-test
@@ -60,10 +66,10 @@ CONF
 	echo "FailAt 30"
 	echo "Stack 32768"
 	echo "DH0:C/Path DH0:C ADD"
-	echo "Assign T: DH0:T"
-	echo "Assign ENV: DH0:ENV"
-	echo "Assign ENVARC: DH0:ENVARC"
-	echo "Assign L: DH0:L ADD"
+	echo "DH0:C/tassign T DH0:T"
+	echo "DH0:C/tassign ENV DH0:ENV"
+	echo "DH0:C/tassign ENVARC DH0:ENVARC"
+	echo "DH0:C/tassign L DH0:L"
 	echo "DH0:C/rtcheck START=\"DH0:C/Riptide >DH0:out/riptide.log CONFIG=DH0:S/riptide.conf\" NOCHECK >DH0:out/start"
 	echo "DH0:C/ping -c 2 -q $BR_NET.1 >DH0:out/ping"
 	tr -d '\r' < "$CMDS" | while IFS='|' read -r name cmd; do

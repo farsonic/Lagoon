@@ -59,11 +59,11 @@ amiga: build/amiga/liblagoon.lib
 
 # the handler has its own entry point (no C start-up code): see src/amiga/handler
 build/amiga/lagoon-handler: $(patsubst src/%.c,build/amiga/obj/%.o,$(HANDLER_SRC)) build/amiga/liblagoon.lib
-	$(VC) -nostdlib -o $@ $(patsubst src/%.c,build/amiga/obj/%.o,$(HANDLER_SRC)) build/amiga/liblagoon.lib -lvc -lamiga
+	$(VC) -nostdlib -s -o $@ $(patsubst src/%.c,build/amiga/obj/%.o,$(HANDLER_SRC)) build/amiga/liblagoon.lib -lvc -lamiga
 build/amiga/Lagoon: $(patsubst src/%.c,build/amiga/obj/%.o,$(CMD_SRC)) build/amiga/liblagoon.lib
-	$(VC) -o $@ $(patsubst src/%.c,build/amiga/obj/%.o,$(CMD_SRC)) build/amiga/liblagoon.lib -lamiga
+	$(VC) -s -o $@ $(patsubst src/%.c,build/amiga/obj/%.o,$(CMD_SRC)) build/amiga/liblagoon.lib -lamiga
 build/amiga/LagoonPrefs: $(patsubst src/%.c,build/amiga/obj/%.o,$(PREFS_SRC)) build/amiga/liblagoon.lib
-	$(VC) -o $@ $(patsubst src/%.c,build/amiga/obj/%.o,$(PREFS_SRC)) build/amiga/liblagoon.lib -lamiga
+	$(VC) -s -o $@ $(patsubst src/%.c,build/amiga/obj/%.o,$(PREFS_SRC)) build/amiga/liblagoon.lib -lamiga
 
 package: all amiga
 	tools/mkpackage.sh
