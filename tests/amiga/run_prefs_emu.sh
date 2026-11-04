@@ -57,7 +57,7 @@ PATH=$VBCC/bin:$PATH VBCC=$VBCC "$VBCC/bin/vc" +aos68k -O2 -I/opt/amiga/ndk/Incl
 	echo "as4|DH0:C/tassign LOCALE DH0:Locale"
 	echo "as5|DH0:C/tassign L DH0:L"
 	echo "prefs|DH0:C/LagoonPrefs $largs DEBUG"
-	echo "after|List lagoon:"
+	echo "after|Type lagoon:hello.txt"
 } > "$cmds"
 # FS-UAE turns the cursor keys into a joystick unless told otherwise
 fx="joystick_port_1 = none"
@@ -192,8 +192,10 @@ else
 	if [ "$afp" = 1 ]; then
 		# AFP share: List (pick window), Test, OK, Mount, Unmount, Mount
 		key a
-		sleep 2
-		key p v
+		sleep 3
+		key p
+		sleep 1
+		key v
 		typ 192.168.78.1
 		key Return e
 		typ lagoon
@@ -202,24 +204,25 @@ else
 		key Return l
 		sleep 4
 		shot 08-pick
-		key Return
+		key Down Down Return     # volumes come sorted: secret, readonly, lagoon
 		sleep 1
 		key t
-		sleep 5
+		sleep 15
 		shot 09-test
-		key Return
+		key super+v
 		sleep 1
 		shot 09b-test-done
 		key o
 		sleep 1
+		# an AFP login (DHX2) takes a few seconds on an emulated 68020
 		key m
-		sleep 5
+		sleep 20
 		shot 10-mounted
 		key m
-		sleep 3
+		sleep 5
 		shot 11-unmounted
 		key m
-		sleep 5
+		sleep 20
 	fi
 	key s
 fi
@@ -246,7 +249,7 @@ cmp -s "$conf" "$work/dh0/ENV/Lagoon/lagoon.conf" || fail "ENV: and ENVARC: diff
 grep -q "query from 192.168.78.2" "$out/responder.log" || fail "no mDNS query from the Amiga"
 if [ "$afp_ok" = 1 ]; then
 	grep -q 'name="lagoon" url="afp://192.168.78.1/lagoon" user="lagoon" pass="~' "$conf" || fail "AFP share not saved"
-	grep -q "hello.txt" "$work/dh0/out/after" || fail "AFP share not mounted after Save: $(cat "$work/dh0/out/after")"
+	grep -q "hello from netatalk" "$work/dh0/out/after" || fail "AFP share not mounted after Save: $(cat "$work/dh0/out/after")"
 fi
 echo "output: $out (emulator work dir $work)"
 [ $fails -eq 0 ] && echo "ok   LagoonPrefs on the emulator ($mode${lang:+, $lang})"

@@ -16,8 +16,8 @@
 #                            <lang> is the .ct name in ASCII (francais):
 #                            Install_Lagoon copies them to LOCALE:Catalogs/
 #                            under the language names (fran\347ais)
-#   Docs/(.info)             README.md, install.md, prefs.md, LICENSE,
-#                            CREDITS.md (each with an icon)
+#   Docs/(.info)             README.md, LICENSE and docs/*.md but DESIGN.md
+#                            (each with an icon)
 #
 # and from it OUTDIR/lagoon-VERSION.lha (with "LHa for UNIX" lha or jlha;
 # LHA=... picks one; a .zip otherwise), OUTDIR/lagoon-VERSION.readme and an
@@ -89,8 +89,8 @@ sed "s/@VERSION@/$VERSION/g" "$top/install/Lagoon.readme" > "$pkg/Lagoon.readme"
 
 # documentation (Markdown reads fine as text in MultiView)
 docs="README.md LICENSE"
-for f in docs/install.md docs/prefs.md docs/CREDITS.md; do
-	[ -f "$top/$f" ] && docs="$docs $f"
+for f in "$top"/docs/*.md; do
+	case "$f" in */DESIGN.md) ;; *) docs="$docs docs/$(basename "$f")" ;; esac
 done
 for f in $docs; do
 	[ -f "$top/$f" ] && cp "$top/$f" "$pkg/Docs/"

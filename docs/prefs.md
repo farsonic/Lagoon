@@ -6,6 +6,10 @@ before you save it, and mounts or unmounts shares. It uses GadTools and
 Intuition only (no MUI), needs AmigaOS 3.0 or newer, follows your screen
 font and fits a 640x200 (NTSC) or 640x256 (PAL) Workbench with topaz 8;
 when the windows would not fit with the screen font it falls back to topaz 8.
+`tools/mkcatalog.py check` makes sure every translation fits 640 pixels
+with topaz 8. The share editor on a 640x200 NTSC screen:
+
+![Share editor, NTSC](images/prefs-editor-ntsc.png)
 
 ![LagoonPrefs main window](images/prefs-main.png)
 
@@ -22,7 +26,7 @@ and user name.
 | **Add...** | a new share in the editor |
 | **Edit...** | the selected share in the editor (also double-click or Return) |
 | **Remove** | removes the selected share (asks first; also Del) |
-| **Mount / Unmount** | runs `Lagoon MOUNT NAS` / `Lagoon UNMOUNT NAS`; if the list has changes that are not in use yet, LagoonPrefs offers to *Use* them first, because `C:Lagoon` reads `ENV:Lagoon/lagoon.conf` |
+| **Mount / Unmount** | mounts the selected share as it is in the list now (saved or not) with the same code `C:Lagoon MOUNT` uses (`src/amiga/mount.c`), with a busy pointer while it connects and logs on; Unmount refuses while files are open on the volume |
 | **Browse network...** | finds servers (below) and starts a new share from the one you pick |
 | **Save** | writes `ENVARC:Lagoon/lagoon.conf` (the old one becomes `lagoon.conf.bak`) and `ENV:Lagoon/lagoon.conf`, then quits |
 | **Use** | writes `ENV:Lagoon/lagoon.conf` only (until the next reboot), then quits |
@@ -67,6 +71,8 @@ never with the password. **Test** connects with these settings, reads the
 free space and disconnects again, with a busy pointer meanwhile, and shows
 "Connected to nas.local. 1.2 TB free of 3.6 TB." or the reason it failed
 ("logon failure (bad user or password)", "host not found", ...).
+![Test](images/prefs-test.png)
+
 **OK** checks the fields and takes the share into the list; **Cancel**
 forgets the changes. NFS shares use UID/GID instead of user and password:
 
@@ -95,7 +101,10 @@ servers it finds:
 Pick a server and press **Use** (or double-click it): the editor opens with
 the protocol and server filled in and asks the server for its shares at
 once; if that needs a password, enter user and password and press
-**List...**. **Search again** repeats the search.
+**List...**. The pick list (Return or double-click picks one):
+
+![Shares on a server](images/prefs-pick.png)
+ **Search again** repeats the search.
 
 Servers in other subnets are not found this way (multicast and broadcast
 stay in the local network): enter them with **Add...**. WS-Discovery
@@ -108,14 +117,15 @@ cannot, so a share on `nas.local` works without a DNS server.
 ## Starting it from the Shell
 
 ```
-LagoonPrefs [FROM=file] [EDIT] [USE] [SAVE] [PUBSCREEN=name] [LANGUAGE=name]
+LagoonPrefs [FROM=file] [EDIT] [USE] [SAVE] [PUBSCREEN=name] [LANGUAGE=name] [DEBUG]
 ```
 
 `FROM` edits another file (default: `ENV:Lagoon/lagoon.conf`, or
 `ENVARC:` when `ENV:` has none). `USE` / `SAVE` write `FROM` to `ENV:` (and
 `ENVARC:`) without opening a window, like the system editors. `PUBSCREEN`
 opens on a public screen. `LANGUAGE` picks a catalog other than the one of
-your Locale preferences, e.g. `LANGUAGE=deutsch`.
+your Locale preferences, e.g. `LANGUAGE=deutsch`. `DEBUG` prints the
+window events to the Shell (used by the emulator test).
 
 ## Languages
 
@@ -126,6 +136,8 @@ Install_Lagoon). The catalog sources are
 `tools/mkcatalog.py` builds the catalogs and `strings.h` and checks that
 every translation is complete, has the same `%` formats and no clashing
 keyboard shortcuts. New translations are welcome: copy a `.ct` file.
+(The emulator test runs the AROS ROM, which has no locale.library, so the
+catalogs are checked by the tool, not on screen.)
 
 ## The share list file
 
@@ -157,8 +169,9 @@ URL options written by the editor: SMB `sign=required`, `encrypt=yes`; AFP
   servers do not show their shares to guests.
 * **Test fails with "host not found"**: try the address instead of the
   name; for `name.local` the server must announce itself by mDNS.
-* **Mount fails**: the message shows what `C:Lagoon` said; `Lagoon MOUNT NAS`
-  in a Shell shows the same.
+* **Mount fails**: the message gives the reason (logon failure, volume
+  password needed, `L:lagoon-handler` missing ...); `Lagoon MOUNT NAS` in
+  a Shell shows the same.
 
 ## For developers
 
@@ -169,6 +182,10 @@ catalog), `strings.h` (generated). Discovery is portable core code:
 `src/core/ln_mdns.c` and `src/core/ln_netbios.c`, tested natively by
 `tests/t_mdns.c` (canned packets + `tests/servers/mdns/responder.py`) and
 `tests/t_netbios.c` (canned packets + a private Samba `nmbd`,
-`tests/servers/netbios/nmbd.sh`). `tests/amiga/run_prefs_emu.sh` drives
-LagoonPrefs on the emulated A1200 with the keyboard and takes the
-screenshots in `docs/images/`.
+`tests/servers/netbios/nmbd.sh`). `tests/amiga/run_prefs_emu.sh [OUTDIR] [pal|ntsc] [LANGUAGE]` drives
+LagoonPrefs on the emulated A1200 with the keyboard (Riptide as the stack):
+main window, editors, a new share with a masked password, Browse against
+the mDNS responder and a private nmbd, then an AFP share against Netatalk
+(List, Test, Mount, Unmount, Mount), Save, and checks `lagoon.conf` in
+`ENVARC:`/`ENV:` (with the `.bak`) and that the mounted volume reads. It
+takes the screenshots in `docs/images/`.

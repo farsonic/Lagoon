@@ -164,13 +164,9 @@
   (complete 40)
   (if (NOT (= #old-doc ""))
   (
-    (P_DEL (tackon #old-doc "README.md"))
-    (P_DEL (tackon #old-doc "install.md"))
-    (P_DEL (tackon #old-doc "prefs.md"))
-    (P_DEL (tackon #old-doc "LICENSE"))
-    (P_DEL (tackon #old-doc "CREDITS.md"))
-    (P_DEL (tackon #old-doc "ReadMe"))
-    (if (= (exists #old-doc (noreq)) 2) (delete #old-doc (infos) (optional "nofail")))
+    ; the Docs drawer is ours alone: remove it with everything in it
+    (if (= (exists #old-doc (noreq)) 2)
+      (delete #old-doc (all) (infos) (optional "force" "nofail")))
     (if (= (exists (pathonly #old-doc) (noreq)) 2)
       (delete (pathonly #old-doc) (infos) (optional "nofail")))
   ))
