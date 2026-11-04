@@ -15,6 +15,7 @@ the Amiga (vbcc, 68020).
 | `smb_rpc.c` | share list: DCE/RPC over `\PIPE\srvsvc` on IPC$, NetrShareEnum level 1 |
 | `smb_status.c` | NTSTATUS to `LN_E*` (and names for the log) |
 | `src/core/crypto/{aes,ccm,gcm,rc4}.c`, `ln_cipher.h` | AES-128/256, AES-CMAC, AES-CCM, AES-GCM/GMAC, RC4 |
+| `src/core/crypto/{aes68k,ghash68k,sha256_68k}.s` | 68020 assembly for the AES rounds, GHASH and SHA-256 (Amiga build only) |
 
 ## Features
 
@@ -156,25 +157,30 @@ Measured with `build/amiga/lncli` on the emulated A1200 (68020, 14 MHz,
 fs-uae, Riptide) against Samba on the host. The times cover the whole
 command (connect, NEGOTIATE, NTLMv2 logon, tree connect, the transfer):
 
-| 1 MB file | Time | Rate |
-|---|---|---|
-| get, 3.0.2, unsigned (`dialect=3.0.2`) | 2.9 s | ~360 KB/s |
-| get, 3.1.1, AES-GMAC signing (default) | 22.9 s | ~46 KB/s |
-| put, 3.1.1, AES-GMAC signing (default) | 24.3 s | ~43 KB/s |
-| get, 3.1.1, AES-CMAC signing (`gmac=no`) | 37.7 s | ~27 KB/s |
-| get, 2.1, HMAC-SHA256 signing (`sign=required`) | 39.4 s | ~27 KB/s |
-| get, 3.1.1, AES-128-GCM encryption (`encrypt=yes`) | 58.6 s | ~18 KB/s |
-| put, 3.1.1, GCM (share requires encryption) | 59.8 s | ~17 KB/s |
-| get, 3.1.1, AES-128-CCM encryption (`cipher=ccm`) | 73.3 s | ~14 KB/s |
+| 1 MB file | Time | Rate | Before the 68k crypto |
+|---|---|---|---|
+| get, 3.0.2, unsigned (`dialect=3.0.2`) | 2.9 s | ~360 KB/s | 2.9 s |
+| get, 3.1.1, AES-GMAC signing (default) | 10.9 s | ~94 KB/s | 22.9 s |
+| put, 3.1.1, AES-GMAC signing (default) | 12.2 s | ~84 KB/s | 24.3 s |
+| get, 3.1.1, AES-CMAC signing (`gmac=no`) | 19.0 s | ~54 KB/s | 37.7 s |
+| get, 2.1, HMAC-SHA256 signing (`sign=required`) | 19.8 s | ~52 KB/s | 39.4 s |
+| get, 3.1.1, AES-128-GCM encryption (`encrypt=yes`) | 26.9 s | ~38 KB/s | 58.6 s |
+| put, 3.1.1, GCM (share requires encryption) | 28.1 s | ~36 KB/s | 59.8 s |
+| get, 3.1.1, AES-128-CCM encryption (`cipher=ccm`) | 34.8 s | ~29 KB/s | 73.3 s |
 
-Crypto dominates: one AES-128 block costs about 2000 instructions with
-vbcc (~1 ms at 14 MHz, ~35 s per MB). GHASH uses an 8-bit table (4 KB per
-key), which brings GMAC to roughly 20 s per MB, cheaper than CMAC and HMAC.
-GCM needs one AES pass plus GHASH; CCM needs two AES passes.
-3.1.1 always signs non-guest sessions, so on a trusted LAN where speed
-matters, `dialect=3.0.2` (or `3.0`) without `sign=required` avoids
-per-message MACs. This only works if the server does not require signing.
-Faster CPUs (68030/040/060) scale about linearly.
+Crypto dominates. The Amiga build runs the AES rounds, GHASH and the
+SHA-256 compression function in 68020 assembly (`src/core/crypto/*.s`,
+see `ln_cipher.h`); on the emulated 14 MHz 68020, `tests/amiga/cryptobench.c`
+measures about 61 KB/s for AES-128 (CTR/CBC-MAC), 135 KB/s for GMAC,
+43 KB/s for GCM, 65 KB/s for CMAC, 32 KB/s for CCM and 60 KB/s for
+SHA-256/HMAC (vbcc C: 31, 52, 18, 29, 14 and 28 KB/s). GMAC is the
+cheapest signing (one GHASH pass, 8-bit table, 4 KB per key), so it is
+offered first; GCM needs an AES pass plus GHASH, CCM two AES passes.
+Keys are expanded once per session. 3.1.1 always signs non-guest
+sessions, so on a trusted LAN where speed matters, `dialect=3.0.2` (or
+`3.0`) without `sign=required` avoids per-message MACs. This only works
+if the server does not require signing. Faster CPUs (68030/040/060)
+scale about with the clock, the 040/060 better (data caches).
 
 ## Tests
 

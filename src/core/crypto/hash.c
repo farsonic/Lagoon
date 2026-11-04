@@ -1,6 +1,7 @@
 /*
  * Lagoon - MD4 (RFC 1320, NTLM), MD5 (RFC 1321), SHA-256 and SHA-512
- * (FIPS 180-4), HMAC (RFC 2104). Straightforward portable implementations.
+ * (FIPS 180-4), HMAC (RFC 2104). Straightforward portable implementations;
+ * the Amiga build takes the SHA-256 compression from sha256_68k.s.
  * SPDX-License-Identifier: GPL-2.0-only
  */
 #include "../ln_hash.h"
