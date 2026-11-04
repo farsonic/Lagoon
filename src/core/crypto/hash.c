@@ -112,7 +112,8 @@ void ln_md5_update(LnMd5 *c, const void *p, size_t n) { upd64(c->s, &c->len, c->
 void ln_md5_final(LnMd5 *c, u8 out[16]) { int i; fin64(c->s, c->len, c->buf, md5_block, 0); for (i = 0; i < 4; i++) ln_put_le32(out + 4 * i, c->s[i]); }
 
 /* ---------------- SHA-256 ---------------- */
-static const u32 k256[64] = {
+/* round constants (shared with sha256_68k.s) */
+const u32 ln_sha256_k[64] = {
 	0x428a2f98, 0x71374491, 0xb5c0fbcf, 0xe9b5dba5, 0x3956c25b, 0x59f111f1, 0x923f82a4, 0xab1c5ed5,
 	0xd807aa98, 0x12835b01, 0x243185be, 0x550c7dc3, 0x72be5d74, 0x80deb1fe, 0x9bdc06a7, 0xc19bf174,
 	0xe49b69c1, 0xefbe4786, 0x0fc19dc6, 0x240ca1cc, 0x2de92c6f, 0x4a7484aa, 0x5cb0a9dc, 0x76f988da,
@@ -123,24 +124,55 @@ static const u32 k256[64] = {
 	0x748f82ee, 0x78a5636f, 0x84c87814, 0x8cc70208, 0x90befffa, 0xa4506ceb, 0xbef9a3f7, 0xc67178f2
 };
 
+#ifdef LN_CRYPTO_ASM
+void ln_sha256_block(u32 s[8], const u8 *p);   /* sha256_68k.s */
+#define sha256_block ln_sha256_block
+#else
+/* rounds unrolled eight at a time with the variables renamed instead of
+ * moved, the message schedule in a 16-word ring computed as it is used */
+#define S256_BS0(x) (ROR32(x, 2) ^ ROR32(x, 13) ^ ROR32(x, 22))
+#define S256_BS1(x) (ROR32(x, 6) ^ ROR32(x, 11) ^ ROR32(x, 25))
+#define S256_SS0(x) (ROR32(x, 7) ^ ROR32(x, 18) ^ ((x) >> 3))
+#define S256_SS1(x) (ROR32(x, 17) ^ ROR32(x, 19) ^ ((x) >> 10))
+#define S256_W(i) (w[(i) & 15] += S256_SS1(w[((i) - 2) & 15]) + w[((i) - 7) & 15] + S256_SS0(w[((i) - 15) & 15]))
+#define S256_R(a, b, c, d, e, f, g, h, i, W)                                       \
+	do {                                                                       \
+		u32 t1 = h + S256_BS1(e) + (g ^ (e & (f ^ g))) + k[i] + (W);       \
+		d += t1;                                                           \
+		h = t1 + S256_BS0(a) + ((a & b) | (c & (a | b)));                  \
+	} while (0)
+
 static void sha256_block(u32 s[8], const u8 *p)
 {
-	u32 w[64], a, b, c, d, e, f, g, h;
+	u32 w[16], a, b, c, d, e, f, g, h;
+	const u32 *k = ln_sha256_k;
 	int i;
-	for (i = 0; i < 16; i++) w[i] = ln_be32(p + 4 * i);
-	for (i = 16; i < 64; i++) {
-		u32 s0 = ROR32(w[i - 15], 7) ^ ROR32(w[i - 15], 18) ^ (w[i - 15] >> 3);
-		u32 s1 = ROR32(w[i - 2], 17) ^ ROR32(w[i - 2], 19) ^ (w[i - 2] >> 10);
-		w[i] = w[i - 16] + s0 + w[i - 7] + s1;
-	}
+	for (i = 0; i < 16; i++)
+		w[i] = ln_be32(p + 4 * i);
 	a = s[0]; b = s[1]; c = s[2]; d = s[3]; e = s[4]; f = s[5]; g = s[6]; h = s[7];
-	for (i = 0; i < 64; i++) {
-		u32 t1 = h + (ROR32(e, 6) ^ ROR32(e, 11) ^ ROR32(e, 25)) + ((e & f) ^ (~e & g)) + k256[i] + w[i];
-		u32 t2 = (ROR32(a, 2) ^ ROR32(a, 13) ^ ROR32(a, 22)) + ((a & b) ^ (a & c) ^ (b & c));
-		h = g; g = f; f = e; e = d + t1; d = c; c = b; b = a; a = t1 + t2;
+	for (i = 0; i < 16; i += 8) {
+		S256_R(a, b, c, d, e, f, g, h, i + 0, w[i + 0]);
+		S256_R(h, a, b, c, d, e, f, g, i + 1, w[i + 1]);
+		S256_R(g, h, a, b, c, d, e, f, i + 2, w[i + 2]);
+		S256_R(f, g, h, a, b, c, d, e, i + 3, w[i + 3]);
+		S256_R(e, f, g, h, a, b, c, d, i + 4, w[i + 4]);
+		S256_R(d, e, f, g, h, a, b, c, i + 5, w[i + 5]);
+		S256_R(c, d, e, f, g, h, a, b, i + 6, w[i + 6]);
+		S256_R(b, c, d, e, f, g, h, a, i + 7, w[i + 7]);
+	}
+	for (; i < 64; i += 8) {
+		S256_R(a, b, c, d, e, f, g, h, i + 0, S256_W(i + 0));
+		S256_R(h, a, b, c, d, e, f, g, i + 1, S256_W(i + 1));
+		S256_R(g, h, a, b, c, d, e, f, i + 2, S256_W(i + 2));
+		S256_R(f, g, h, a, b, c, d, e, i + 3, S256_W(i + 3));
+		S256_R(e, f, g, h, a, b, c, d, i + 4, S256_W(i + 4));
+		S256_R(d, e, f, g, h, a, b, c, i + 5, S256_W(i + 5));
+		S256_R(c, d, e, f, g, h, a, b, i + 6, S256_W(i + 6));
+		S256_R(b, c, d, e, f, g, h, a, i + 7, S256_W(i + 7));
 	}
 	s[0] += a; s[1] += b; s[2] += c; s[3] += d; s[4] += e; s[5] += f; s[6] += g; s[7] += h;
 }
+#endif
 
 void ln_sha256_init(LnSha256 *c)
 {

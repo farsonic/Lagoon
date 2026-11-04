@@ -39,8 +39,12 @@ test: all
 
 # ------------------------------------------------------------- Amiga ----
 VC      := PATH=$(VBCC)/bin:$$PATH VBCC=$(VBCC) $(VBCC)/bin/vc +aos68k
-ACFLAGS := -c99 -O2 -dontwarn=153 -cpu=68020 -I$(NDK) -I$(NETINC) -Isrc/core -Isrc/amiga
-AOBJ    := $(patsubst src/%.c,build/amiga/obj/%.o,$(CORE_SRC) src/amiga/sys_amiga.c src/amiga/net_amiga.c)
+ACFLAGS := -c99 -O2 -dontwarn=153 -cpu=68020 -I$(NDK) -I$(NETINC) -Isrc/core -Isrc/amiga -DLN_CRYPTO_ASM
+# 68020 assembly for the AES rounds and GHASH (src/core/crypto/*.s, Amiga
+# only; LN_CRYPTO_ASM drops the C versions from aes.c and gcm.c)
+CORE_ASM := $(wildcard src/core/*/*.s)
+AOBJ    := $(patsubst src/%.c,build/amiga/obj/%.o,$(CORE_SRC) src/amiga/sys_amiga.c src/amiga/net_amiga.c) \
+           $(patsubst src/%.s,build/amiga/obj/%.o,$(CORE_ASM))
 HANDLER_SRC := $(wildcard src/amiga/handler/*.c)
 CMD_SRC     := $(wildcard src/amiga/cmd/*.c)
 PREFS_SRC   := $(wildcard src/amiga/prefs/*.c)
@@ -48,6 +52,9 @@ PREFS_SRC   := $(wildcard src/amiga/prefs/*.c)
 build/amiga/obj/%.o: src/%.c $(HDRS)
 	@mkdir -p $(dir $@)
 	$(VC) $(ACFLAGS) -c -o $@ $<
+build/amiga/obj/%.o: src/%.s
+	@mkdir -p $(dir $@)
+	$(VBCC)/bin/vasmm68k_mot -quiet -Fhunk -m68020 -nowarn=62 -o $@ $<
 build/amiga/liblagoon.lib: $(AOBJ)
 	@mkdir -p $(dir $@)
 	cat $^ > $@
