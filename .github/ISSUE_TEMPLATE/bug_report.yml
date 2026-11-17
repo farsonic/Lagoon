@@ -1,0 +1,47 @@
+name: Bug report
+description: Something in Lagoon (mounting, copying, the handler, LagoonPrefs, the installer) doesn't work as it should
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you expected, and what Lagoon did instead.
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open ...
+        2. Choose ...
+        3. ...
+  - type: input
+    id: version
+    attributes:
+      label: Lagoon version
+      description: "Version L:lagoon-handler in a Shell (for example 0.1)."
+    validations:
+      required: true
+  - type: input
+    id: server
+    attributes:
+      label: Server and share type
+      description: Protocol (SMB, AFP or NFS), the server software and version, and its relevant settings (signing, encryption, SMB dialect, AFP auth, NFS export). Never include passwords or real addresses.
+      placeholder: SMB, Samba 4.19 on a Synology NAS, signing required, SMB 3.1.1
+    validations:
+      required: true
+  - type: input
+    id: system
+    attributes:
+      label: System
+      description: AmigaOS version, CPU, TCP/IP stack and version (Riptide, Roadshow, Miami, AmiTCP...).
+      placeholder: AmigaOS 3.2, 68030 50 MHz, Roadshow 1.15
+    validations:
+      required: true
+  - type: textarea
+    id: files
+    attributes:
+      label: Output or screenshot
+      description: The output of the Lagoon command or a screenshot of LagoonPrefs, with passwords and addresses removed. A crash's Guru Meditation number helps too.

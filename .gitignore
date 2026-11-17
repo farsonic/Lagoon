@@ -2,3 +2,4 @@ build/
 *.uaem
 lagoon-*.lha
 lagoon-*.adf
+tools/__pycache__/

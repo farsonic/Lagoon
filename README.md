@@ -1,5 +1,7 @@
 # Lagoon
 
+[![Buy Me a Coffee](https://img.shields.io/badge/Buy%20me%20a%20coffee-farsonic-FFDD00?logo=buymeacoffee&logoColor=black)](https://buymeacoffee.com/farsonic)
+
 Network shares on your Amiga: Lagoon mounts Windows/macOS/Samba shares (SMB
 2 and 3), older Macs and Netatalk servers (AFP) and Unix servers (NFS v3) as
 ordinary AmigaDOS volumes. It runs on AmigaOS 3.x (68020 or better) with any

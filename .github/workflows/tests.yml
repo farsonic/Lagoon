@@ -1,0 +1,14 @@
+# Native tests of Lagoon's portable core (ASan/UBSan). The integration tests against Samba, Netatalk and
+# nfs-ganesha skip themselves when those servers aren't installed (as here); run them locally. The Amiga
+# build needs vbcc and the NDK; see CLAUDE.md.
+name: tests
+on:
+  push:
+  pull_request:
+jobs:
+  native:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Native tests
+        run: make test

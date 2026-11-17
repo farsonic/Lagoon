@@ -1,0 +1,16 @@
+name: Feature request
+description: Something Lagoon should do (a protocol feature, a server it should work with, ...)
+labels: [enhancement]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What you would like
+      description: What you want to do, and how you would expect it to work.
+    validations:
+      required: true
+  - type: textarea
+    id: why
+    attributes:
+      label: Why
+      description: What it would let you do that you can't now.
