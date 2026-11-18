@@ -115,6 +115,16 @@ static Object *string(ULONG max)
 	return mui_new(MUIC_String, MUIA_Frame, MUIV_Frame_String, MUIA_String_MaxLen, max, MUIA_CycleChain, 1,
 	               LM_TAGEND);
 }
+/* a password field: bullets for the characters (MUI's own, and the Mac's Human Interface
+   Guidelines' password field on the Mac's MUI layer) */
+#ifndef MUIA_String_Secret
+#define MUIA_String_Secret 0x80428769UL
+#endif
+static Object *secret_string(ULONG max)
+{
+	return mui_new(MUIC_String, MUIA_Frame, MUIV_Frame_String, MUIA_String_MaxLen, max, MUIA_String_Secret, TRUE,
+	               MUIA_CycleChain, 1, LM_TAGEND);
+}
 static Object *list(Object **lv, ULONG active_id)
 {
 	Object *l = mui_new(MUIC_List, MUIA_Frame, MUIV_Frame_InputList, MUIA_List_ConstructHook,
@@ -702,7 +712,7 @@ static int build(void)
 	eserver = string(127);
 	eshare = string(127);
 	euser = string(63);
-	epass = string(127);
+	epass = secret_string(127);
 	add(g, label(S(MSG_NAME)));     add(g, ename);
 	add(g, label(S(MSG_PROTOCOL))); add(g, eproto);
 	add(g, label(S(MSG_SERVER)));   add(g, eserver);

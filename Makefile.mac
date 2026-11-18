@@ -36,8 +36,8 @@ CORE_SRC := $(wildcard src/core/*.c src/core/*/*.c)
 LN_OBJ   := $(patsubst src/%.c,$(B)/ln/%.o,$(CORE_SRC) src/mac/sys_mac.c src/mac/net_mac.c src/mac/mac_main.c src/mui/lm_gui.c) \
             $(B)/ln/mac/mac_thunks.o
 # Riptide's app kit and MUI for the Mac, and what they need of its core and libc
-RT_OBJ   := $(B)/rt/mac/app/crt0.o $(B)/rt/mac/app/ostraps.o $(B)/rt/gen/toolbox_glue.o \
-            $(patsubst %,$(B)/rt/mac/mui/%.o,mm_boopsi mm_app mm_area mm_group mm_gadgets mm_gfx mm_os mm_thunks) \
+RT_OBJ   := $(B)/rt/mac/app/crt0.o $(B)/rt/mac/app/ostraps.o $(B)/rt/gen/toolbox_glue.o $(B)/rt/mac/app/mac_alert.o \
+            $(patsubst %,$(B)/rt/mac/mui/%.o,mm_boopsi mm_app mm_area mm_group mm_gadgets mm_gfx mm_os mm_hig mm_thunks) \
             $(B)/rt/amiga/prefs/mui_util.o $(B)/rt/amiga/prefs/mui_theme.o \
             $(B)/rt/core/printf.o $(B)/rt/amiga/libc.o
 GEN_H    := $(patsubst %,$(GEN)/%_calls.h,exec dos timer locale battclock intuition graphics gadtools icon \
