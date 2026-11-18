@@ -231,8 +231,10 @@ long et_write(const u8 *wds, u8 *mpp, long enq, u32 dest)
 	struct tx *t;
 	const u8 *to, *lap = *(u8 *const *)(wds + 2);
 
-	if (enq || !g.installed)
-		return 0;                                   /* AAddNode claims the address, not ENQs */
+	if (enq || !g.installed) {
+		if (enq && g.tx_frames < 4) LOG("ENQ for node %x ignored", dest);
+		return 0;
+	}                                   /* AAddNode claims the address, not ENQs */
 	memcpy(frame_tmp, llc_ddp, 8);
 	for (; get16(wds); wds += 6) {
 		u16 n = get16(wds);
@@ -509,12 +511,13 @@ long et_dispatch(long sel, long d1, long port, void *a0, void *a1)
 	switch (sel) {
 	case A_INSTALL:   et_d1_out = (u32)d1; return install((u32)d1, (u8)port);
 	case A_SHUTDOWN:  LOG("AShutDown"); shutdown(); return 0;
-	case A_GETINFO:   return get_info(a1, d1);
+	case A_GETINFO:   LOG("AGetInfo, %d bytes", (s32)(s16)d1); return get_info(a1, (s16)d1);
 	case A_OPEN:      LOG("AOpen"); g.open = 1; return 0;
 	case A_CLOSE:     LOG("AClose"); g.open = 0; g.node = 0; return 0;
 	case A_ADDNODE:   return add_node(a0);
 	case A_DELNODE:   return del_node(a0);
 	case A_GETNODEREF: return node_ref(a0);
 	}
+	LOG("call %d not handled", sel);
 	return -17;                                     /* controlErr: not a call we know */
 }

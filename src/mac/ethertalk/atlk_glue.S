@@ -48,7 +48,8 @@ relocated:
 | ---- the 'atlk' calls ----
 atlk_call:
 	movem.l	%d1-%d7/%a0-%a6,-(%sp)	| 56 bytes: D1 first, at (sp)
-	move.l	%d0,%d7			| the call
+	moveq	#0,%d7
+	move.w	%d0,%d7			| the call: a word (.MPP sets only the low half of D0)
 	lea	relocated(%pc),%a2
 	tst.w	(%a2)
 	bne.s	5f
