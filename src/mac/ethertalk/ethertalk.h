@@ -87,7 +87,7 @@ struct agetinfo {
 	u8  flags;                  /* bit 7: an extended (Phase 2) network */
 	u8  addr_size;
 	u8  addr[6];
-	u16 maxnodes;               /* 1: the user node only, acquired with AAddNode */
+	u16 maxnodes;               /* the user node and the multinodes, all acquired with AAddNode */
 } __attribute__((packed));
 
 /* the parameter block of AAddNode, ADelNode and AGetNodeRef (Technote NW 13: a Control block's
@@ -117,6 +117,8 @@ extern u16 et_rp_calls, et_rr_calls;            /* our ReadPacket and ReadRest, 
 u32  et_ticks(void);
 extern char et_aarp_spec[], et_ddp_spec[];      /* the 802.2 protocol specifications */
 void et_aarp_ph(void), et_ddp_ph(void), et_vbl(void);   /* register-level entries */
+void et_dt_entry(void);                         /* the loopback's deferred task */
+s16  et_dtinstall(void *task);
 
 /* ---- ethertalk.c, called from the glue ---- */
 long et_dispatch(long sel, long d1, long port, void *a0, void *a1);
@@ -124,6 +126,7 @@ long et_write(const u8 *wds, u8 *mpp, long enq, u32 dest);
 void et_rx_aarp(const u8 *rha_next, const u8 *pkt, long len);
 void et_rx_ddp(const u8 *rha_next, const u8 *pkt, long len);
 void et_tick(void);
+void et_loop_run(void);
 extern u32 et_d1_out;                           /* AInstall's D1 on the way out */
 extern u8 et_rxbuf[1536];                       /* a received frame's rest (ReadRest) */
 

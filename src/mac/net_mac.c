@@ -15,6 +15,7 @@
 #include "../core/ln_net.h"
 #include "../core/ln_sys.h"
 #include "mac_ipp_private.h"                     /* riptide src/mac/prefs: struct rtmac_api */
+#include "bridge/lm_bridge.h"
 
 short mac_pb(void *pb, long trap);               /* riptide src/mac/app/ostraps.S */
 #define TRAP_OPEN    0xA000
@@ -54,7 +55,18 @@ short mac_pb(void *pb, long trap);               /* riptide src/mac/app/ostraps.
 struct LnSock { int fd; };
 
 static const struct rtmac_api *api;
-static void *cl;
+static void *cl, *cl_thread;
+
+/* The AppleShare bridge's thread (src/mac/bridge) has a Riptide client of its own: sockets
+ * belong to the client that made them, and its waits yield to the thread's host. A call from
+ * the application counts in lm_app_core while it runs, so that the thread, which may interrupt
+ * the application at deferred-task time, never enters Riptide's core while the application is
+ * in it (the count is put aside while the application's own wait yields, lm_yield). */
+volatile int lm_app_core;
+#define CL (lmb_in_thread ? cl_thread : cl)
+static inline void app_in(void) { if (!lmb_in_thread) lm_app_core++; }
+static inline void app_out(void) { if (!lmb_in_thread) lm_app_core--; }
+#define RT(fn, ...) ({ int r_; app_in(); r_ = api->fn(CL, __VA_ARGS__); app_out(); r_; })
 
 /* the program's part (src/mac/mac_thunks.S, mac_main.c): yield and break with its A5 */
 void lm_yield_thunk(void *arg);
@@ -86,6 +98,22 @@ int ln_net_init(void)
 	__asm__ volatile("move.l %%a5,%0" : "=m"(lm_a5));
 	cl = api->attach(lm_yield_thunk, lm_break_thunk, NULL);
 	return cl ? LN_OK : LN_ENONET;
+}
+
+int ln_net_thread_attach(void)
+{
+	if (!cl)
+		return LN_ENONET;
+	if (!cl_thread)
+		cl_thread = api->attach(lm_yield_thunk, lm_break_thunk, NULL);
+	return cl_thread ? LN_OK : LN_ENOMEM;
+}
+
+void ln_net_thread_detach(void)
+{
+	if (cl_thread)
+		api->detach(cl_thread);
+	cl_thread = NULL;
 }
 
 void ln_net_exit(void)
@@ -167,7 +195,7 @@ int ln_resolve(const char *host, LnAddr *out, int max)
 		return 1;
 	}
 	if (!cl) return LN_ENONET;
-	n = api->resolve(cl, host, a, 8, 0, canon, sizeof canon);
+	n = RT(resolve, host, a, 8, 0, canon, sizeof canon);
 	if (n <= 0 && ln_mdns_resolve_hook) {
 		size_t l = strlen(host);
 		if (l > 6 && !strcmp(host + l - 6, ".local"))
@@ -206,7 +234,7 @@ static int wait_fd(int fd, int wr, int timeout_ms)
 	unsigned long set[2] = { 0, 0 }, sig = 0;
 	int r;
 	set[fd >> 5] = 1UL << (fd & 31);
-	r = api->select(cl, fd + 1, wr ? NULL : set, wr ? set : NULL, NULL, timeout_ms > 0 ? timeout_ms : -1, &sig);
+	r = RT(select, fd + 1, wr ? NULL : set, wr ? set : NULL, NULL, timeout_ms > 0 ? timeout_ms : -1, &sig);
 	if (r == 0) return LN_ETIMEDOUT;
 	if (r < 0) return map_err(r);
 	return LN_OK;
@@ -215,20 +243,20 @@ static int wait_fd(int fd, int wr, int timeout_ms)
 static void nonblock(int fd, int on)
 {
 	unsigned long v = (unsigned long)on;
-	api->ioctl(cl, fd, FIONBIO_, &v);
+	RT(ioctl, fd, FIONBIO_, &v);
 }
 
 static int finish_connect(int fd, const u8 *sa, unsigned long len, int timeout_ms)
 {
 	int r;
 	nonblock(fd, 1);
-	r = api->connect(cl, fd, sa, len);
+	r = RT(connect, fd, sa, len);
 	if (r == -E_INPROG || r == -E_AGAIN) {
 		int err = 0;
 		unsigned long el = sizeof(err);
 		r = wait_fd(fd, 1, timeout_ms);
 		if (r == LN_OK) {
-			api->getsockopt(cl, fd, SOL_SOCK, SO_ERR, &err, &el);
+			RT(getsockopt, fd, SOL_SOCK, SO_ERR, &err, &el);
 			r = err ? -err : 0;
 		} else
 			return r;
@@ -236,7 +264,7 @@ static int finish_connect(int fd, const u8 *sa, unsigned long len, int timeout_m
 	if (r < 0)
 		return r == -E_ADDRUSE || r == -E_ADDRNA ? r : map_err(r);
 	nonblock(fd, 0);
-	{ int one = 1; api->setsockopt(cl, fd, IPPROTO_TCP6, TCP_NODEL, &one, sizeof(one)); }
+	{ int one = 1; RT(setsockopt, fd, IPPROTO_TCP6, TCP_NODEL, &one, sizeof(one)); }
 	return LN_OK;
 }
 
@@ -251,17 +279,17 @@ int ln_tcp_connect(const char *host, u16 port, int timeout_ms, LnSock **out)
 		int fd, r;
 		a[i].port = port;
 		len = to_sa(&a[i], sa);
-		fd = api->socket(cl, a[i].family == 6 ? AF6 : AF4, STREAM, 0);
+		fd = RT(socket, a[i].family == 6 ? AF6 : AF4, STREAM, 0);
 		if (fd < 0) { last = map_err(fd); continue; }
 		r = finish_connect(fd, sa, len, timeout_ms);
 		if (r != LN_OK) {
-			api->close(cl, fd);
+			RT(close, fd);
 			if (r == LN_EBREAK) return r;
 			last = r == -E_ADDRUSE || r == -E_ADDRNA ? LN_EIO : r;
 			continue;
 		}
 		*out = ln_alloc(sizeof(LnSock));
-		if (!*out) { api->close(cl, fd); return LN_ENOMEM; }
+		if (!*out) { RT(close, fd); return LN_ENOMEM; }
 		(*out)->fd = fd;
 		return LN_OK;
 	}
@@ -274,7 +302,7 @@ int ln_tcp_send(LnSock *s, const void *buf, size_t n, int timeout_ms)
 	while (n) {
 		int r, w = wait_fd(s->fd, 1, timeout_ms);
 		if (w) return w;
-		r = api->sendto(cl, s->fd, p, n, 0, NULL, 0);
+		r = RT(sendto, s->fd, p, n, 0, NULL, 0);
 		if (r < 0) { if (r == -E_AGAIN) continue; return map_err(r); }
 		p += r; n -= (size_t)r;
 	}
@@ -286,7 +314,7 @@ int ln_tcp_recv_some(LnSock *s, void *buf, size_t n, int timeout_ms)
 	for (;;) {
 		int r, w = wait_fd(s->fd, 0, timeout_ms);
 		if (w) return w;
-		r = api->recvfrom(cl, s->fd, buf, n, 0, NULL, NULL);
+		r = RT(recvfrom, s->fd, buf, n, 0, NULL, NULL);
 		if (r < 0) { if (r == -E_AGAIN) continue; return map_err(r); }
 		return r;
 	}
@@ -308,7 +336,7 @@ int ln_sock_local(LnSock *s, LnAddr *out)
 {
 	u8 sa[28];
 	unsigned long len = sizeof sa;
-	int r = api->getsockname(cl, s->fd, sa, &len);
+	int r = RT(getsockname, s->fd, sa, &len);
 	if (r < 0) return map_err(r);
 	from_sa(sa, out);
 	return LN_OK;
@@ -317,7 +345,7 @@ int ln_sock_local(LnSock *s, LnAddr *out)
 void ln_sock_close(LnSock *s)
 {
 	if (!s) return;
-	if (cl) api->close(cl, s->fd);
+	if (cl) RT(close, s->fd);
 	ln_free(s);
 }
 
@@ -326,21 +354,21 @@ int ln_udp_open(u16 port, const LnAddr *grp, LnSock **out)
 	u8 sa[16];
 	int fd, one = 1, r;
 	if (!cl) return LN_ENONET;
-	fd = api->socket(cl, AF4, DGRAM, 0);
+	fd = RT(socket, AF4, DGRAM, 0);
 	if (fd < 0) return map_err(fd);
-	api->setsockopt(cl, fd, SOL_SOCK, SO_REUSE, &one, sizeof(one));
+	RT(setsockopt, fd, SOL_SOCK, SO_REUSE, &one, sizeof(one));
 	memset(sa, 0, sizeof sa);
 	sa[0] = 16; sa[1] = AF4; sa[2] = (u8)(port >> 8); sa[3] = (u8)port;
-	r = api->bind(cl, fd, sa, 16);
-	if (r < 0) { api->close(cl, fd); return map_err(r); }
+	r = RT(bind, fd, sa, 16);
+	if (r < 0) { RT(close, fd); return map_err(r); }
 	if (grp) {
 		u8 m[8];
 		memcpy(m, grp->a, 4);
 		memset(m + 4, 0, 4);                 /* INADDR_ANY */
-		api->setsockopt(cl, fd, IPPROTO_IP4, IP_ADDMEMB, m, 8);
+		RT(setsockopt, fd, IPPROTO_IP4, IP_ADDMEMB, m, 8);
 	}
 	*out = ln_alloc(sizeof(LnSock));
-	if (!*out) { api->close(cl, fd); return LN_ENOMEM; }
+	if (!*out) { RT(close, fd); return LN_ENOMEM; }
 	(*out)->fd = fd;
 	return LN_OK;
 }
@@ -349,7 +377,7 @@ int ln_udp_sendto(LnSock *s, const LnAddr *to, const void *buf, size_t n)
 {
 	u8 sa[28];
 	unsigned long len = to_sa(to, sa);
-	int r = api->sendto(cl, s->fd, buf, n, 0, sa, len);
+	int r = RT(sendto, s->fd, buf, n, 0, sa, len);
 	return r < 0 ? map_err(r) : (int)n;
 }
 
@@ -359,7 +387,7 @@ int ln_udp_recvfrom(LnSock *s, LnAddr *from, void *buf, size_t n, int timeout_ms
 	unsigned long len = sizeof sa;
 	int r, w = wait_fd(s->fd, 0, timeout_ms);
 	if (w) return w;
-	r = api->recvfrom(cl, s->fd, buf, n, 0, sa, &len);
+	r = RT(recvfrom, s->fd, buf, n, 0, sa, &len);
 	if (r < 0) return map_err(r);
 	if (from) from_sa(sa, from);
 	return r;
@@ -367,7 +395,7 @@ int ln_udp_recvfrom(LnSock *s, LnAddr *from, void *buf, size_t n, int timeout_ms
 
 int ln_udp_broadcast(LnSock *s, int on)
 {
-	int r = api->setsockopt(cl, s->fd, SOL_SOCK, SO_BCAST, &on, sizeof(on));
+	int r = RT(setsockopt, s->fd, SOL_SOCK, SO_BCAST, &on, sizeof(on));
 	return r < 0 ? map_err(r) : LN_OK;
 }
 
@@ -389,15 +417,15 @@ int ln_tcp_connect_reserved(const char *host, u16 port, int timeout_ms, LnSock *
 			la.family = a[i].family;
 			la.port = (u16)lport;
 			llen = to_sa(&la, ls);
-			fd = api->socket(cl, a[i].family == 6 ? AF6 : AF4, STREAM, 0);
+			fd = RT(socket, a[i].family == 6 ? AF6 : AF4, STREAM, 0);
 			if (fd < 0) return map_err(fd);
-			api->setsockopt(cl, fd, SOL_SOCK, SO_REUSE, &one, sizeof(one));
-			if (api->bind(cl, fd, ls, llen) < 0) { api->close(cl, fd); continue; }
+			RT(setsockopt, fd, SOL_SOCK, SO_REUSE, &one, sizeof(one));
+			if (RT(bind, fd, ls, llen) < 0) { RT(close, fd); continue; }
 			r = finish_connect(fd, sa, len, timeout_ms);
-			if (r == -E_ADDRUSE || r == -E_ADDRNA) { api->close(cl, fd); continue; }
-			if (r != LN_OK) { api->close(cl, fd); last = r; break; }
+			if (r == -E_ADDRUSE || r == -E_ADDRNA) { RT(close, fd); continue; }
+			if (r != LN_OK) { RT(close, fd); last = r; break; }
 			*out = ln_alloc(sizeof(LnSock));
-			if (!*out) { api->close(cl, fd); return LN_ENOMEM; }
+			if (!*out) { RT(close, fd); return LN_ENOMEM; }
 			(*out)->fd = fd;
 			return LN_OK;
 		}

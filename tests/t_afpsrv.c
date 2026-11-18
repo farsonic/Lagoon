@@ -777,6 +777,54 @@ int main(void)
 	CHECK_INT(ln_be32(rsp.data + 6), 0x83030303u);
 	afps_free(srv);
 
+	/* NBP: lookups for our name answered, others not */
+	{
+		static const u8 lk[] = { 0x21, 7, 0xFF, 0x00, 0x42, 0xFD, 0,
+		                         1, '=', 9, 'A', 'F', 'P', 'S', 'e', 'r', 'v', 'e', 'r', 1, '*' };
+		static const u8 lk2[] = { 0x21, 8, 0xFF, 0x00, 0x42, 0xFD, 0,
+		                          5, 'g', 'u', 0xC5, 's', 't', 9, 'a', 'f', 'p', 's', 'e', 'r', 'v', 'e', 'r', 1, '*' };
+		static const u8 lk3[] = { 0x21, 9, 0xFF, 0x00, 0x42, 0xFD, 0,
+		                          1, '=', 11, 'L', 'a', 's', 'e', 'r', 'W', 'r', 'i', 't', 'e', 'r', 1, '*' };
+		u8 out[100];
+		AsAddr me = { 0xFF00, 0x77, 0x80 }, to;
+		size_t k = afps_nbp_answer(lk, sizeof lk, "Guest", "AFPServer", me, out, sizeof out, &to);
+		CHECK_INT(k, 2 + 5 + 6 + 10 + 2);
+		CHECK_INT(out[0], 0x31);
+		CHECK_INT(out[1], 7);
+		CHECK_INT(ln_be16(out + 2), 0xFF00);
+		CHECK_INT(out[4], 0x77);
+		CHECK_INT(out[5], 0x80);
+		CHECK(!memcmp(out + 7, "\005Guest\011AFPServer\001*", 18));
+		CHECK_INT(to.node, 0x42);
+		CHECK_INT(to.socket, 0xFD);
+		CHECK(afps_nbp_answer(lk2, sizeof lk2, "Guest", "AFPServer", me, out, sizeof out, &to) > 0);
+		CHECK_INT(afps_nbp_answer(lk3, sizeof lk3, "Guest", "AFPServer", me, out, sizeof out, &to), 0);
+		CHECK_INT(afps_nbp_answer(lk, 9, "Guest", "AFPServer", me, out, sizeof out, &to), 0);
+	}
+	/* the relay: the client's request to the multinode goes to the server, the answer back */
+	{
+		AfpsRelay rl;
+		u8 h[13] = { 0x04, 0x30, 0x12, 0x34, 0xFF, 0x00, 0xFF, 0x00, 0x77, 0x42, 0x80, 0xFD, 3 };
+		memset(&rl, 0, sizeof rl);
+		rl.server.net = 0xFF00; rl.server.node = 0x42; rl.server.socket = 0xFC;
+		rl.vnode.net = 0xFF00; rl.vnode.node = 0x77; rl.vnode.socket = 0x80;
+		CHECK_INT(afps_relay(&rl, h), 1);
+		CHECK_INT(h[8], 0x42); CHECK_INT(h[10], 0xFC);          /* to the server's socket */
+		CHECK_INT(h[9], 0x77); CHECK_INT(h[11], 0xFD);          /* from the multinode, client socket */
+		CHECK_INT(h[2] | h[3], 0);
+		CHECK_INT(h[0], 0x00);                                  /* hop count cleared */
+		{
+			u8 r2[13] = { 0, 20, 0, 0, 0xFF, 0x00, 0xFF, 0x00, 0x77, 0x42, 0xFD, 0xFC, 3 };
+			CHECK_INT(afps_relay(&rl, r2), 1);
+			CHECK_INT(r2[8], 0x42); CHECK_INT(r2[10], 0xFD);    /* to the client's socket */
+			CHECK_INT(r2[9], 0x77); CHECK_INT(r2[11], 0x80);    /* from the multinode's server socket */
+		}
+		{
+			u8 r3[13] = { 0, 20, 0, 0, 0xFF, 0x00, 0xFF, 0x00, 0x78, 0x42, 0xFD, 0xFC, 3 };
+			CHECK_INT(afps_relay(&rl, r3), 0);                 /* not the multinode */
+		}
+	}
+
 	ops->unmount(fs);
 	T_DONE("t_afpsrv");
 }

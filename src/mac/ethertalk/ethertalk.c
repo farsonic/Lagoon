@@ -11,9 +11,16 @@
  * protocol handlers the LAP Manager calls (et_rx_ddp, et_rx_aarp), and a VBL task that asks
  * again for addresses nobody has answered for yet (et_tick). atlk_glue.S has the registers.
  *
+ * Multinodes (Technote NW 13): besides the user node, .MPP may ask for up to MAXNODES - 1 more
+ * addresses for programs that take their own datagrams (Lagoon's AppleShare bridge has one, so
+ * that the Mac's AppleShare client, which will not use a server on its own node, sees the
+ * server on another). Each address is claimed with AARP like the user node and answered for
+ * afterwards; datagrams for it go up with its address reference number, and AGetNodeRef tells
+ * .MPP which addresses are this Mac's, so that it loops datagrams between them itself.
+ *
  * What it does not do (yet): zone multicast addresses (an NBP lookup in our own zone goes to the
- * broadcast address instead, which every node hears too), multinodes (maxnodes is 1), routing
- * (packets for other nodes are dropped, not passed to a router on this Mac).
+ * broadcast address instead, which every node hears too), routing (packets for other nodes are
+ * dropped, not passed to a router on this Mac).
  *
  * The node's address is .MPP's: it picks a network and node (from parameter RAM, or at random
  * in the startup range $FF00-$FFFE) and asks AAddNode to claim it; after a router's ZIP
@@ -98,6 +105,7 @@ static inline void et_nolog(const char *fmt, ...) { (void)fmt; }   /* no log: th
 #define AMT_SIZE 16                 /* the address mapping table: AppleTalk address -> Ethernet */
 #define NTX      4                  /* frames on their way out at once */
 #define NPEND    4                  /* datagrams waiting for an AARP answer */
+#define MAXNODES 4                  /* the user node and three multinodes */
 #define FRAME    (14 + 8 + DDP_MAX) /* 802.3 header, 802.2 LLC and SNAP, the datagram */
 
 struct amt { u32 addr; u8 mac[6]; u8 used; u8 stamp; };
@@ -111,7 +119,8 @@ static struct {
 	u8  installed, multi, ddp_on, aarp_on, vbl_on, open;
 	u8  stamp;                      /* AMT age counter, for replacing the oldest entry */
 	u8  *mpp;                       /* .MPP's variables, from AAddNode */
-	u32 node;                       /* our address (network << 8 | node); 0 = none */
+	u32 node;                       /* the user node's address (network << 8 | node); 0 = none */
+	struct { u32 addr; u16 ref; u8 used; } nodes[MAXNODES];   /* the user node and multinodes */
 	u32 tentative;                  /* the address being probed for */
 	volatile u8 conflict;           /* somebody answered for the tentative address */
 	u8  logged_rx, logged_tx;       /* the first frames each way go to the log */
@@ -120,10 +129,25 @@ static struct {
 static struct amt amt[AMT_SIZE];
 static struct tx tx[NTX];
 static struct pend pend[NPEND];
+/* datagrams for one of this Mac's own nodes, handed up by a deferred task (et_loop_run) */
+#define NLOOP 8
+static struct { u16 len; u8 ddp[DDP_MAX]; } loopq[NLOOP];
+static volatile u8 loop_head, loop_tail, loop_queued;
+static struct { void *qlink; s16 qtype; s16 flags; void *addr; void *param; u32 res; } __attribute__((packed)) loop_dt;
 static struct { void *qlink; s16 qtype; void *addr; s16 count, phase; } __attribute__((packed)) vbl;
 u32 et_d1_out;
 u8 et_rxbuf[1536];
 u16 et_rp_calls, et_rr_calls;
+
+/* the node table entry for an address, or NULL */
+static int node_index(u32 a)
+{
+	int i;
+	for (i = 0; i < MAXNODES; i++)
+		if (g.nodes[i].used && g.nodes[i].addr == (a & 0xFFFFFF))
+			return i;
+	return -1;
+}
 
 static const u8 bcast[6] = { 0x09, 0x00, 0x07, 0xFF, 0xFF, 0xFF };   /* AppleTalk broadcast, Phase 2 */
 static const u8 llc_ddp[8] = { 0xAA, 0xAA, 0x03, 0x08, 0x00, 0x07, 0x80, 0x9B };
@@ -255,6 +279,28 @@ long et_write(const u8 *wds, u8 *mpp, long enq, u32 dest)
 	}
 	dest &= 0xFFFFFF;
 	sr = et_irq_off();
+	if ((dest & 0xFF) != 0xFF && node_index(dest) >= 0) {
+		/* for a node of this Mac: .MPP loops the user node's datagrams to multinodes itself,
+		   but a multinode's NetWrite to the user node comes here (the testbed, 18 November).
+		   It goes up from a deferred task, as if it had come in: never from inside a write,
+		   which may be .MPP's own, in the middle of using its Read Header Area */
+		u8 h = loop_head, nh = (u8)((h + 1) % NLOOP);
+		if (nh == loop_tail || len > DDP_MAX) {
+			g.tx_drops++;
+		} else {
+			memcpy(loopq[h].ddp, frame_tmp + 8, len);
+			loopq[h].len = len;
+			loop_head = nh;
+			if (!loop_queued) {
+				loop_queued = 1;
+				loop_dt.qtype = 7;              /* dtQType */
+				loop_dt.addr = (void *)et_dt_entry;
+				et_dtinstall(&loop_dt);
+			}
+		}
+		et_irq_restore(sr);
+		return 0;
+	}
 	if ((dest & 0xFF) == 0xFF)
 		to = bcast;
 	else if ((e = amt_find(dest)) != NULL)
@@ -313,9 +359,9 @@ void et_rx_aarp(const u8 *rha_next, const u8 *pkt, long len)
 	LOG("AARP %s from %x for %x", fn == AARP_REQUEST ? "request" : fn == AARP_RESPONSE ? "response" : "probe", src, dst);
 	if (g.tentative && (src == g.tentative || (fn == AARP_PROBE && dst == g.tentative)))
 		g.conflict = 1;                             /* somebody has it, or wants it too */
-	if (g.node && dst == g.node && (fn == AARP_REQUEST || fn == AARP_PROBE))
-		aarp_send(AARP_RESPONSE, src_hw, src_hw, g.node, src);   /* ours: say so */
-	if (fn == AARP_RESPONSE || (fn == AARP_REQUEST && g.node && dst == g.node)) {
+	if (node_index(dst) >= 0 && (fn == AARP_REQUEST || fn == AARP_PROBE))
+		aarp_send(AARP_RESPONSE, src_hw, src_hw, dst, src);      /* ours: say so */
+	if (fn == AARP_RESPONSE || (fn == AARP_REQUEST && node_index(dst) >= 0)) {
 		sr = et_irq_off();
 		amt_learn(src, src_hw);
 		et_irq_restore(sr);
@@ -323,11 +369,14 @@ void et_rx_aarp(const u8 *rha_next, const u8 *pkt, long len)
 	(void)dst_hw;
 }
 
+static void deliver_up(const u8 *pkt, u16 ddplen, u32 ref);
+
 /* pkt: the DDP datagram (long header) and whatever padding the frame had */
 void et_rx_ddp(const u8 *rha_next, const u8 *pkt, long len)
 {
 	u16 ddplen, dnet;
-	u8 dnode, *rha;
+	u8 dnode;
+	u32 ref = 0xFFFF;                               /* the user node's, and broadcasts' */
 
 	g.rx_ddp++;
 	log_header("DDP", rha_next, len);
@@ -340,10 +389,12 @@ void et_rx_ddp(const u8 *rha_next, const u8 *pkt, long len)
 	if (ddplen < 13 || ddplen > len)
 		return;
 	dnet = get16(pkt + 4); dnode = pkt[8];
-	if (dnode != 0xFF && (!g.node || dnode != (u8)g.node))
-		return;                                     /* not for us, and we are no router */
-	if (dnet && g.node && dnet != (u16)(g.node >> 8) && dnode != 0xFF)
-		return;
+	if (dnode != 0xFF) {
+		int k = node_index((u32)(dnet ? dnet : (u16)(g.node >> 8)) << 8 | dnode);
+		if (k < 0)
+			return;                             /* not for us, and we are no router */
+		ref = g.nodes[k].ref;
+	}
 	/* the LAP Manager keeps the frame's header behind A3: two bytes, the destination at -22,
 	   the source at -16, the 802.3 length at -10, then LLC and SNAP (Aurora68's testbed log;
 	   Technote NW 13 says -24 for the destination, two bytes further back) */
@@ -352,8 +403,18 @@ void et_rx_ddp(const u8 *rha_next, const u8 *pkt, long len)
 		amt_learn((u32)get16(pkt + 6) << 8 | pkt[9], rha_next - 16);   /* hop count 0: glean its sender */
 		et_irq_restore(sr);
 	}
-	/* .MPP's Read Header Area at 1(A2): the LAP header as LocalTalk would have it, then the
-	   whole 13-byte long DDP header. LRdDispatch is .MPP's own routine (the LAP Manager jumps
+	deliver_up(pkt, ddplen, ref);
+}
+
+/* a datagram (long header first) up to .MPP for the node with this reference. .MPP's Read
+   Header Area at 1(A2): the LAP header as LocalTalk would have it, then the whole 13-byte long
+   DDP header. */
+static void deliver_up(const u8 *pkt, u16 ddplen, u32 ref)
+{
+	u8 *rha;
+	u16 dnet = get16(pkt + 4);
+	u8 dnode = pkt[8];
+	/* LRdDispatch is .MPP's own routine (the LAP Manager jumps
 	   through 1052(A2)), and on an extended network it compares the header's destination,
 	   8(A2) and 12(A2), with the node's address before reading anything: with LocalTalk's five
 	   bytes there it saw 0.0 and dropped every datagram (the testbed's log, 18 November) */
@@ -362,12 +423,28 @@ void et_rx_ddp(const u8 *rha_next, const u8 *pkt, long len)
 	memcpy(rha + 3, pkt, 13);
 	{
 		u16 rp = et_rp_calls, rr = et_rr_calls;
-		u32 d2 = 0xFFFF0000 | LAP_TYPE_LONG;            /* the user node's reference, the LAP type */
+		u32 d2 = ref << 16 | LAP_TYPE_LONG;             /* the node's reference, the LAP type */
 		long r = et_deliver(g.mpp, rha + 16, (u8 *)pkt + 13, (long)ddplen - 13, (long)d2);
 		if (g.rx_ddp <= 3)
 			LOG("up: %d bytes for %d.%d:%d, %s, ReadPacket %d ReadRest %d", ddplen, dnet, dnode, pkt[10],
 			    r ? "no handler" : "taken", et_rp_calls - rp, et_rr_calls - rr);
 	}
+}
+
+/* the deferred task: the datagrams et_write kept for this Mac's own nodes go up */
+void et_loop_run(void)
+{
+	u16 sr = et_irq_off();
+	loop_queued = 0;
+	while (loop_tail != loop_head) {
+		const u8 *p = loopq[loop_tail].ddp;
+		u16 len = loopq[loop_tail].len;
+		int k = node_index((u32)(get16(p + 4) ? get16(p + 4) : (u16)(g.node >> 8)) << 8 | p[8]);
+		if (k >= 0 && g.open && g.mpp && len >= 13)
+			deliver_up(p, len, g.nodes[k].ref);
+		loop_tail = (u8)((loop_tail + 1) % NLOOP);
+	}
+	et_irq_restore(sr);
 }
 
 /* ---- the VBL task, every fifth of a second: ask again for next hops nobody has named ---- */
@@ -398,6 +475,10 @@ static long add_node(struct atlk_pb *pb)
 	int tries = pb->num_tries ? pb->num_tries : AARP_PROBES, i;
 	if (tries > 20) tries = 20;
 	g.mpp = pb->mpp_vars;
+	if (node_index(a) >= 0) {                       /* one of ours already: .MPP picks another */
+		LOG("AAddNode %x: ours already", a);
+		return -1;
+	}
 	g.conflict = 0;
 	g.tentative = a;
 	LOG("AAddNode %x: %d probes", a, tries);
@@ -407,25 +488,39 @@ static long add_node(struct atlk_pb *pb)
 	}
 	g.tentative = 0;
 	if (g.conflict) { LOG("AAddNode %x: in use", a); return -1; }
-	g.node = a;
-	pb->addr_ref = 0xFFFF;                          /* the user node's reference number */
-	LOG("AAddNode %x: ours", a);
+	for (i = 0; i < MAXNODES && g.nodes[i].used; i++)
+		;
+	if (i == MAXNODES) { LOG("AAddNode %x: no room", a); return -1; }
+	g.nodes[i].addr = a;
+	g.nodes[i].used = 1;
+	/* the first address is the user node's, whose reference must be $FFFF whatever .MPP
+	   passed (NW 13); a multinode keeps the reference .MPP gave it */
+	if (!g.node) {
+		g.node = a;
+		pb->addr_ref = 0xFFFF;
+	}
+	g.nodes[i].ref = pb->addr_ref;
+	LOG("AAddNode %x: ours, reference %x", a, (u32)pb->addr_ref);
 	return 0;
 }
 
 static long del_node(struct atlk_pb *pb)
 {
-	if (!g.node || (pb->net_addr & 0xFFFFFF) != g.node) return -1;
-	LOG("ADelNode %x", g.node);
-	g.node = 0;
-	pb->addr_ref = 0xFFFF;
+	int k = node_index(pb->net_addr);
+	if (k < 0) return -1;
+	LOG("ADelNode %x", g.nodes[k].addr);
+	pb->addr_ref = g.nodes[k].ref;
+	g.nodes[k].used = 0;
+	if (g.nodes[k].addr == g.node)
+		g.node = 0;
 	return 0;
 }
 
 static long node_ref(struct atlk_pb *pb)
 {
-	if (!g.node || (pb->net_addr & 0xFFFFFF) != g.node) return 0;
-	pb->addr_ref = 0xFFFF;
+	int k = node_index(pb->net_addr);
+	if (k < 0) return 0;
+	pb->addr_ref = g.nodes[k].ref;
 	return 1;
 }
 
@@ -441,7 +536,7 @@ static long get_info(struct agetinfo *r, long size)
 	r->flags = 0x80;                                /* extended network: Phase 2 */
 	r->addr_size = 6;
 	memcpy(r->addr, g.mac, 6);
-	r->maxnodes = 1;
+	r->maxnodes = MAXNODES;
 	return 0;
 }
 
@@ -488,6 +583,7 @@ static void shutdown(void)
 	}
 	g.installed = g.vbl_on = g.ddp_on = g.aarp_on = g.multi = g.open = 0;
 	g.node = 0;
+	memset(g.nodes, 0, sizeof g.nodes);
 }
 
 static long install(u32 pram, u8 port)
@@ -533,7 +629,7 @@ long et_dispatch(long sel, long d1, long port, void *a0, void *a1)
 	case A_SHUTDOWN:  LOG("AShutDown"); shutdown(); return 0;
 	case A_GETINFO:   LOG("AGetInfo, %d bytes", (s32)(s16)d1); return get_info(a1, (s16)d1);
 	case A_OPEN:      LOG("AOpen"); g.open = 1; return 0;
-	case A_CLOSE:     LOG("AClose"); g.open = 0; g.node = 0; return 0;
+	case A_CLOSE:     LOG("AClose"); g.open = 0; g.node = 0; memset(g.nodes, 0, sizeof g.nodes); return 0;
 	case A_ADDNODE:   return add_node(a0);
 	case A_DELNODE:   return del_node(a0);
 	case A_GETNODEREF: return node_ref(a0);

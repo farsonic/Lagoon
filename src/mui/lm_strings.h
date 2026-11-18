@@ -58,7 +58,13 @@ enum {
 	MSG_SELECT_FIRST = 50,
 	MSG_NEED_SERVER = 51,
 	MSG_FILE_ERROR = 52,
-	MSG_COUNT = 53
+	MSG_PUT_ON_DESKTOP = 53,
+	MSG_NO_APPLETALK = 54,
+	MSG_BRIDGE_STARTING = 55,
+	MSG_BRIDGE_MOUNTING = 56,
+	MSG_BRIDGE_READY = 57,
+	MSG_BRIDGE_ERROR = 58,
+	MSG_COUNT = 59
 };
 
 #ifdef LM_STRINGS_ARRAY
@@ -116,6 +122,12 @@ static const char *const lm_builtin[MSG_COUNT] = {
 	"Choose an entry first.",
 	"Enter the server.",
 	"Cannot use the file %s.",
+	"Put on Desktop",
+	"AppleTalk is inactive: make it active in the Chooser.",
+	"Offering %s to AppleShare...",
+	"Putting %s on the desktop...",
+	"%s is on the desktop.",
+	"%s: AppleTalk error %s.",
 };
 #endif
 

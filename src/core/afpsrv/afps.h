@@ -93,4 +93,30 @@ int  afps_sessions(const AfpsServer *s);
 /* the status block FPGetSrvrInfo / ASP GetStatus returns (for tests) */
 size_t afps_status(const AfpsServer *s, u8 *out, size_t max);
 
+/* ---- the multinode in front of the server (afps_relay.c) ----
+ * System 7's AppleShare client will not use a server on its own node (it gives up with
+ * afpSameNodeErr, -5063, before it sends a packet). So on the Mac the server's name is answered
+ * for from a second node of the same Mac, a multinode (Inside Macintosh: Networking, chapter
+ * 12), and what the client sends there is passed on to the server's socket on the user node,
+ * and back. The server and its ATP stay on the user node, on the Mac's own .ATP. */
+
+/* an NBP lookup (DDP type 2: BrRq or LkUp, Inside AppleTalk 7-15) for object:type@zone? If it
+ * matches, the LkUp-Reply naming 'me' goes into out (its length returned) and *to is where it
+ * goes; 0 otherwise. Wildcards: "=" for a whole field, one "\xC5" (the Mac's approximately-
+ * equal sign) within one; letters compare without case; any zone is taken for ours. */
+size_t afps_nbp_answer(const u8 *nbp, size_t n, const char *object, const char *type, AsAddr me,
+                       u8 *out, size_t max, AsAddr *to);
+
+typedef struct AfpsRelay {
+	AsAddr server;           /* the server's socket on the user node */
+	AsAddr vnode;            /* the multinode (net, node) and the socket clients use there */
+	u16    cnet;             /* the client last heard from */
+	u8     cnode, have_client;
+} AfpsRelay;
+/* a datagram that came to the multinode: hdr is its long DDP header (13 bytes, Inside
+ * AppleTalk 4-16), rewritten in place for passing on (the checksum dropped). Returns 1 to send
+ * it on: client to vnode:socket goes to the server, from vnode:client socket; server to
+ * vnode:x goes to the client's socket x, from vnode:socket. 0: not ours to pass on. */
+int afps_relay(AfpsRelay *r, u8 hdr[13]);
+
 #endif

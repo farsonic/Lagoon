@@ -194,6 +194,22 @@ et_vbl:
 	movem.l	(%sp)+,%d0-%d7/%a0-%a6
 	rts
 
+| the deferred task that hands datagrams for this Mac's own nodes up (et_loop_run)
+	.globl	et_dt_entry
+et_dt_entry:
+	movem.l	%d0-%d7/%a0-%a6,-(%sp)
+	jsr	et_loop_run
+	movem.l	(%sp)+,%d0-%d7/%a0-%a6
+	rts
+
+| short et_dtinstall(void *task): _DTInstall
+	.globl	et_dtinstall
+et_dtinstall:
+	move.l	4(%sp),%a0
+	.short	0xA082
+	ext.l	%d0
+	rts
+
 | ---- calls for C. OS traps change D0-D2/A0-A1; GCC wants D2 kept ----
 	.globl	et_control, et_control_async, et_openslot, et_slotmgr, et_vinstall, et_vremove
 et_control:

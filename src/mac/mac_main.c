@@ -8,6 +8,7 @@
  */
 #include "../core/ln_sys.h"
 #include "../mui/lm_gui.h"
+#include "bridge/lm_bridge.h"
 
 void mm_gfx_lib_init(void);
 void mm_screen_init(void *qd_thePort_addr);
@@ -24,12 +25,22 @@ int  WaitNextEvent(int mask, void *event, long sleep, void *rgn);   /* the Toolb
  * translation hook RiptidePrefs has; Lagoon's texts come from its catalog already */
 const char *tr(const char *s) { return s; }
 
-/* while a network call waits: give the Mac a tick to other programs, take no event */
+/* while a network call waits: give the Mac a tick to other programs, take no event. Riptide has
+ * left its core before it calls this, so the bridge's thread may run meanwhile (lm_app_core).
+ * On the bridge's thread a wait goes back to the thread's host instead (src/mac/bridge). */
 void lm_yield(void *arg)
 {
 	short ev[8];
+	int depth;
 	(void)arg;
+	if (lmb_in_thread) {
+		lmb_thread_yield(5);
+		return;
+	}
+	depth = lm_app_core;
+	lm_app_core = 0;
 	WaitNextEvent(0, ev, 1, 0);
+	lm_app_core = depth;
 }
 int lm_break(void *arg)
 {

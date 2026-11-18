@@ -161,3 +161,21 @@ Indiquez le serveur.
 MSG_FILE_ERROR
 Impossible d'utiliser le fichier %s.
 ;
+MSG_PUT_ON_DESKTOP
+Sur le bureau
+;
+MSG_NO_APPLETALK
+AppleTalk est inactif : activez-le dans le Sélecteur.
+;
+MSG_BRIDGE_STARTING
+Offre de %s à AppleShare...
+;
+MSG_BRIDGE_MOUNTING
+%s est placé sur le bureau...
+;
+MSG_BRIDGE_READY
+%s est sur le bureau.
+;
+MSG_BRIDGE_ERROR
+%s : erreur AppleTalk %s.
+;

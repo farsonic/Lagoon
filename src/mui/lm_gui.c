@@ -8,7 +8,8 @@
  * a button frame with RelVerify input, its label centred with ESC c.
  *
  * Windows:
- *   main      the shares of lagoon.conf; Browse network..., New..., Edit..., Remove, Connect, Save
+ *   main      the shares of lagoon.conf; Browse network..., New..., Edit..., Remove, Connect, Save;
+ *             on the Mac also Put on Desktop (the AppleShare bridge, src/mac/bridge)
  *   editor    name, protocol (SMB, AFP, NFS), server, share (List... asks the server), user,
  *             password
  *   picker    a list to choose from: the servers mDNS and NetBIOS found, or a server's shares
@@ -30,6 +31,9 @@
 #include "ln_mdns.h"
 #include "ln_netbios.h"
 #include "lm_gui.h"
+#ifdef LM_BRIDGE
+#include "bridge/lm_bridge.h"                    /* the Mac's AppleShare bridge (src/mac/bridge) */
+#endif
 #define LM_STRINGS_ARRAY
 #include "lm_strings.h"
 
@@ -65,7 +69,7 @@ const char *lm_str(int id)
 
 /* ---- the objects ---- */
 enum {
-	ID_BROWSE = 100, ID_NEW, ID_EDIT, ID_REMOVE, ID_CONNECT, ID_SAVE, ID_SHARELIST,
+	ID_BROWSE = 100, ID_NEW, ID_EDIT, ID_REMOVE, ID_CONNECT, ID_SAVE, ID_SHARELIST, ID_MOUNT,
 	ID_ED_OK = 120, ID_ED_CANCEL, ID_ED_LIST,
 	ID_PK_USE = 130, ID_PK_CANCEL,
 	ID_F_OPEN = 140, ID_F_UP, ID_F_DOWN, ID_F_UPLOAD, ID_F_MKDIR, ID_F_DELETE, ID_F_CLOSE,
@@ -492,6 +496,75 @@ static void connect_share(const LnShare *s)
 	files_fill();
 }
 
+#ifdef LM_BRIDGE
+/* ---- the Mac: the share as an AppleShare volume on the desktop (src/mac/bridge) ---- */
+static void bridge_failed(const LnShare *s, int err, int oserr)
+{
+	char t[200], n[16];
+	if (err)
+		ln_snprintf(t, sizeof t, S(MSG_FAILED), s->name, ln_strerror(err));
+	else {
+		ln_snprintf(n, sizeof n, "%ld", (long)oserr);
+		ln_snprintf(t, sizeof t, S(MSG_BRIDGE_ERROR), s->name, n);
+	}
+	status(tstatus, t);
+}
+
+static void put_on_desktop(const LnShare *s)
+{
+	LnCreds cr;
+	char t[200];
+	int r, err = 0, oserr = 0, st;
+	u32 t0;
+	if (!net_ok) {
+		status(tstatus, S(MSG_NO_STACK));
+		return;
+	}
+	st = lm_bridge_state(NULL, NULL);
+	if (st == LMB_SERVING && strcmp(lm_bridge_name(), s->name))
+		lm_bridge_stop();                    /* one share at a time */
+	if (lm_bridge_state(NULL, NULL) != LMB_SERVING) {
+		if (st == LMB_FAILED)
+			lm_bridge_stop();
+		creds_of(s, &cr);
+		r = lm_bridge_start(s->url, &cr, s->name);
+		memset(&cr, 0, sizeof cr);
+		if (r != LN_OK) {
+			if (r == LN_ENONET)
+				status(tstatus, S(MSG_NO_APPLETALK));
+			else {
+				lm_bridge_state(&err, &oserr);
+				bridge_failed(s, oserr ? 0 : r, oserr);
+			}
+			return;
+		}
+		ln_snprintf(t, sizeof t, S(MSG_BRIDGE_STARTING), s->name);
+		status(tstatus, t);
+		sleep_app(1);
+		t0 = ln_ms();
+		while ((st = lm_bridge_state(&err, &oserr)) == LMB_STARTING && ln_ms() - t0 < 90000)
+			lm_yield(NULL);
+		sleep_app(0);
+		if (st != LMB_SERVING) {
+			bridge_failed(s, st == LMB_STARTING ? LN_ETIMEDOUT : err, oserr);
+			lm_bridge_stop();
+			return;
+		}
+	}
+	ln_snprintf(t, sizeof t, S(MSG_BRIDGE_MOUNTING), s->name);
+	status(tstatus, t);
+	sleep_app(1);
+	r = lm_bridge_mount();
+	sleep_app(0);
+	if (r != 0) {
+		bridge_failed(s, 0, r);
+		return;
+	}
+	ln_snprintf(t, sizeof t, S(MSG_BRIDGE_READY), s->name);
+	status(tstatus, t);
+}
+#endif
+
 /* ---- local files: a requester, then AmigaDOS ---- */
 static int ask_file(int save, const char *title, const char *initial, char *path, size_t n)
 {
@@ -700,7 +773,12 @@ static int build(void)
 	add(root, lv);
 	add(root, row(button(S(MSG_BROWSE), ID_BROWSE), button(S(MSG_NEW), ID_NEW), button(S(MSG_EDIT), ID_EDIT),
 	              button(S(MSG_REMOVE), ID_REMOVE)));
+#ifdef LM_BRIDGE
+	add(root, row(button(S(MSG_CONNECT), ID_CONNECT), button(S(MSG_PUT_ON_DESKTOP), ID_MOUNT),
+	              mui_new(MUIC_Rectangle, LM_TAGEND), button(S(MSG_SAVE), ID_SAVE)));
+#else
 	add(root, row(button(S(MSG_CONNECT), ID_CONNECT), mui_new(MUIC_Rectangle, LM_TAGEND), button(S(MSG_SAVE), ID_SAVE), NULL));
+#endif
 	add(root, tstatus);
 	wmain = window(S(MSG_WIN_SHARES), 1, root, ID_QUIT);
 
@@ -802,6 +880,13 @@ static void handle(LONG id)
 	case ID_SAVE:
 		status(tstatus, conf_save() ? S(MSG_SAVED) : S(MSG_SAVE_FAILED));
 		break;
+#ifdef LM_BRIDGE
+	case ID_MOUNT:
+		k = active(lshares);
+		if (k < 0 || k >= conf.nshares) { status(tstatus, S(MSG_SELECT_FIRST)); break; }
+		put_on_desktop(&conf.share[k]);
+		break;
+#endif
 	case ID_ED_OK:
 		if (!editor_share(&s)) { status(tstatus, S(MSG_NEED_SERVER)); break; }
 		if (edit_index >= 0 && edit_index < conf.nshares && strcmp(conf.share[edit_index].name, s.name))
@@ -907,6 +992,9 @@ int lm_gui_run(void)
 	}
 	if (ffs)
 		fops->unmount(ffs);
+#ifdef LM_BRIDGE
+	lm_bridge_stop();                            /* the AppleShare volume goes with Lagoon */
+#endif
 	if (conf_dirty)
 		conf_save();
 	mui_set(wmain, MUIA_Window_Open, FALSE);

@@ -162,3 +162,21 @@ Enter the server.
 MSG_FILE_ERROR (//)
 Cannot use the file %s.
 ;
+MSG_PUT_ON_DESKTOP (//)
+Put on Desktop
+;
+MSG_NO_APPLETALK (//)
+AppleTalk is inactive: make it active in the Chooser.
+;
+MSG_BRIDGE_STARTING (//)
+Offering %s to AppleShare...
+;
+MSG_BRIDGE_MOUNTING (//)
+Putting %s on the desktop...
+;
+MSG_BRIDGE_READY (//)
+%s is on the desktop.
+;
+MSG_BRIDGE_ERROR (//)
+%s: AppleTalk error %s.
+;

@@ -29,12 +29,13 @@ CFLAGS  := -m68020 -O2 -std=gnu99 -ffreestanding -fno-builtin -fno-pic -fno-pie 
 ifeq ($(AURORA68),1)
 CFLAGS  += -DAURORA68_LOG
 endif
-LN_CFLAGS := $(CFLAGS) -Isrc/core -Isrc/mui -include src/mac/mac_libc.h
+LN_CFLAGS := $(CFLAGS) -Isrc/core -Isrc/mui -Isrc/mac -include src/mac/mac_libc.h -DLM_BRIDGE
 
 # Lagoon
 CORE_SRC := $(wildcard src/core/*.c src/core/*/*.c)
-LN_OBJ   := $(patsubst src/%.c,$(B)/ln/%.o,$(CORE_SRC) src/mac/sys_mac.c src/mac/net_mac.c src/mac/mac_main.c src/mui/lm_gui.c) \
-            $(B)/ln/mac/mac_thunks.o
+LN_OBJ   := $(patsubst src/%.c,$(B)/ln/%.o,$(CORE_SRC) src/mac/sys_mac.c src/mac/net_mac.c src/mac/mac_main.c src/mui/lm_gui.c \
+              src/mac/bridge/lm_bridge.c src/mac/bridge/lm_pool.c) \
+            $(B)/ln/mac/mac_thunks.o $(B)/ln/mac/bridge/bridge_glue.o
 # Riptide's app kit and MUI for the Mac, and what they need of its core and libc
 RT_OBJ   := $(B)/rt/mac/app/crt0.o $(B)/rt/mac/app/ostraps.o $(B)/rt/gen/toolbox_glue.o $(B)/rt/mac/app/mac_alert.o \
             $(patsubst %,$(B)/rt/mac/mui/%.o,mm_boopsi mm_app mm_area mm_group mm_gadgets mm_gfx mm_os mm_hig mm_thunks) \
@@ -43,7 +44,7 @@ RT_OBJ   := $(B)/rt/mac/app/crt0.o $(B)/rt/mac/app/ostraps.o $(B)/rt/gen/toolbox
 GEN_H    := $(patsubst %,$(GEN)/%_calls.h,exec dos timer locale battclock intuition graphics gadtools icon \
             muimaster openurl bsdsocket riptide usergroup) $(GEN)/toolbox_gen.h
 TRAPS    := $(R)/src/mac/app/traps.txt
-HDRS     := $(wildcard src/core/*.h src/core/*/*.h src/mac/*.h src/mui/*.h) $(GEN_H)
+HDRS     := $(wildcard src/core/*.h src/core/*/*.h src/mac/*.h src/mac/*/*.h src/mui/*.h) $(GEN_H)
 
 all: $(B)/Lagoon.bin $(B)/LagoonEtherTalk.bin
 
@@ -69,6 +70,9 @@ $(B)/ln/%.o: src/%.c $(HDRS)
 $(B)/ln/mac/mac_thunks.o: src/mac/mac_thunks.S
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c -o $@ $<
+$(B)/ln/mac/bridge/bridge_glue.o: src/mac/bridge/bridge_glue.S
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) -c -o $@ $<
 $(B)/rt/%.o: $(R)/src/%.c $(GEN_H)
 	@mkdir -p $(dir $@)
 	$(CC) $(CFLAGS) -c -o $@ $<
@@ -83,7 +87,7 @@ $(B)/Lagoon.elf: $(RT_OBJ) $(LN_OBJ) $(R)/src/mac/app/app.ld
 	$(LD) -T $(R)/src/mac/app/app.ld --emit-relocs --gc-sections --no-warn-rwx-segments -z noexecstack -o $@ \
 	      $(RT_OBJ) $(LN_OBJ) $(LIBGCC) -Map $(B)/Lagoon.map
 $(B)/Lagoon.bin: $(B)/Lagoon.elf $(R)/tools/elf2app.py
-	$(PYTHON) $(R)/tools/elf2app.py $< --name Lagoon --creator LAGN --size 1024 -o $@
+	$(PYTHON) $(R)/tools/elf2app.py $< --name Lagoon --creator LAGN --size 2048 -o $@
 
 # Lagoon EtherTalk: an AppleTalk connection file ('adev' and 'atlk', src/mac/ethertalk; docs/mac.md)
 ET_CFLAGS := -m68020 -O2 -std=gnu99 -ffreestanding -fno-builtin -fno-pic -fno-pie -ffixed-a5 -msoft-float \

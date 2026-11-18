@@ -179,8 +179,7 @@ static void command(AfpsServer *s, AfpsSess *se, const AsReq *q, const u8 *cmd, 
 {
 	size_t rlen = 0;
 	s32 e = afps_afp_call(s, se, cmd, n, wdata, wlen, s->scratch, LN_MIN(room(q), (size_t)AS_QUANTUM), &rlen);
-	if (e != kFPNoErr && e != kFPObjectNotFound && e != kFPEOFErr && e != kFPItemNotFound)
-		LN_LOG(1, "afpsrv: call %u: result %ld", n ? cmd[0] : 0, (long)e);
+	LN_LOG(2, "afpsrv: call %u: result %ld, %lu bytes", n ? cmd[0] : 0, (long)e, (unsigned long)rlen);
 	reply(s, q, e, s->scratch, rlen);
 }
 
@@ -255,6 +254,7 @@ void afps_input(AfpsServer *s, const AsReq *q)
 	switch (q->user[0]) {
 	case SP_GETSTATUS: {
 		size_t n = afps_status(s, s->scratch, LN_MIN(room(q), sizeof s->scratch));
+		LN_LOG(2, "afpsrv: GetStatus from %u.%u:%u", q->src.net, q->src.node, q->src.socket);
 		user4(u, 0, 0, 0, 0);
 		s->t.respond(s->t.ud, q, u, s->scratch, n);
 		break;

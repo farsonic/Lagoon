@@ -14,6 +14,7 @@
 #include <stdarg.h>
 #include "../core/ln_sys.h"
 #include "../core/ln_hash.h"
+#include "bridge/lm_bridge.h"
 
 /* riptide src/mac/mui/mm_os.c and src/mac/app (C linkage, GCC's convention) */
 void *mm_alloc(unsigned long n);                 /* cleared; NULL when out of memory */
@@ -26,7 +27,11 @@ void **GetResource(long type, int id);           /* the Toolbox glue */
 #define LM_TIME   (*(volatile unsigned long *)0x20C)   /* seconds since 1904-01-01, local */
 #define LM_KEYMAP ((volatile unsigned char *)0x174)
 
+#ifdef AURORA68_LOG
+int ln_log_level = 2;                    /* the testbed: what the AFP server does, too */
+#else
 int ln_log_level = 0;
+#endif
 
 /* src/mac/mac_libc.h */
 char *strstr(const char *hay, const char *needle)
@@ -38,8 +43,19 @@ char *strstr(const char *hay, const char *needle)
 	return n ? NULL : (char *)hay;
 }
 
-void *ln_alloc(size_t n) { return mm_alloc(n ? (unsigned long)n : 1); }
-void ln_free(void *p) { if (p) mm_free(p); }
+/* the AppleShare bridge's thread runs at deferred-task time, where the Memory Manager may not be
+ * called: its memory comes from the bridge's pool (src/mac/bridge/lm_pool.c) */
+void *ln_alloc(size_t n)
+{
+	if (lmb_in_thread)
+		return lm_pool_alloc(n ? (unsigned long)n : 1);
+	return mm_alloc(n ? (unsigned long)n : 1);
+}
+void ln_free(void *p)
+{
+	if (p && !lm_pool_free(p))
+		mm_free(p);
+}
 void *ln_realloc(void *p, size_t old_n, size_t new_n)
 {
 	void *q = ln_alloc(new_n);
@@ -110,6 +126,8 @@ void ln_random(void *buf, size_t n)
 /* Command-period held down (KeyMap: Command is key $37, the period $2F) */
 int ln_break(void)
 {
+	if (lmb_in_thread)
+		return 0;                            /* the bridge serves whatever keys are down */
 	return (LM_KEYMAP[0x37 >> 3] & (1 << (0x37 & 7))) && (LM_KEYMAP[0x2F >> 3] & (1 << (0x2F & 7)));
 }
 
