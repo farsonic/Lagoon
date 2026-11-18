@@ -109,7 +109,7 @@ router (ZIP GetNetInfo answered, zones, a network range other than the startup r
 Mac or Netatalk on the same wire (only the peer has answered AARP); the Wi-Fi unit (listed, not
 chosen); real hardware; System 6 and AppleTalk versions other than 7.1's .MPP 57. Not written yet:
 zone multicast addresses (an NBP lookup in our own zone goes to the broadcast address instead),
-multinodes, routing.
+routing. Multinodes came with the bridge (below).
 
 ### What System 7.1's AppleTalk turned out to expect
 
@@ -130,11 +130,12 @@ the System's own .MPP ('drvr' 9, decompressed and disassembled, not copied) and 
 - ReadPacket and ReadRest must leave D2 alone: .MPP's echo responder keeps its place in D2 across
   ReadRest (with D2 used as a counter, its replies went to node 0, socket 0).
 
-### Stage 3: Lagoon's bridge (not started)
+### Stage 3: what the EtherTalk stage left for the bridge
 
-A share Lagoon reaches over TCP (SMB, NFS, AFP over TCP) offered to the Mac's AppleShare client as
-an AFP-over-AppleTalk server inside the Mac, so that the Finder mounts modern shares as AppleShare
-volumes. What this stage showed that matters for it:
+(Written before the bridge was built; kept as the plan it was. What came of it is the next
+section.) A share Lagoon reaches over TCP (SMB, NFS, AFP over TCP) offered to the Mac's
+AppleShare client as an AFP-over-AppleTalk server inside the Mac, so that the Finder mounts
+modern shares as AppleShare volumes. What this stage showed that matters for it:
 - An in-Mac server can be another node on the same Mac (a multinode, .MPP's AddNode, csCode 262,
   with AAddNode in the 'atlk': maxnodes must then be more than 1) or a socket on the user node.
   .MPP loops a datagram back without the 'atlk' when the destination is one of its own nodes (the
@@ -150,3 +151,157 @@ volumes. What this stage showed that matters for it:
 - Before the bridge, the peer can grow to answer OpenSession and a few AFP calls (or relay ASP
   to a host Netatalk 2.x, which still speaks AppleTalk), to test the Mac's AppleShare client
   over Lagoon EtherTalk end to end.
+
+## Lagoon's bridge: a share as an AppleShare volume (18 November 2026)
+
+A share Lagoon reaches over TCP (SMB 2/3, NFS v3, AFP over TCP) is offered to the Mac's own
+AppleShare client as an AFP server inside the Mac, and the Finder mounts it as an ordinary
+AppleShare volume: no file system of Lagoon's own in the Mac. The AppleShare client, the
+Chooser, .MPP, .ATP and .XPP are Apple's; Lagoon adds a server and a second AppleTalk node.
+
+![A Lagoon share on the desktop](images/mac-bridge-desktop.png)
+![The share in the Finder](images/mac-bridge-finder.png)
+
+**Using it.** In Lagoon's main window choose a share and click **Put on Desktop**. Lagoon
+connects to the share (with the user and password lagoon.conf has for it), offers it under the
+share's name, and mounts it as the File Manager mounts an alias's server volume
+(`PBVolumeMount`, a guest `AFPVolMountInfo`). The status line says "Guest is on the desktop."
+The Chooser lists the share under AppleShare as well, and connecting there (as Guest) mounts it
+the usual way. Put Away (Command-Y) takes the volume off the desktop; Lagoon goes on offering
+the share until it quits or another share is put on the desktop (one at a time). Quitting
+Lagoon tells the client the server is going down; AppleShare then says "The file server has
+closed down". AppleTalk must be active (Chooser) on Lagoon EtherTalk; LocalTalk (whose 'atlk'
+is Apple's) has not been tried.
+
+![The Chooser lists the share](images/mac-bridge-chooser.png)
+![Connecting as Guest](images/mac-bridge-login.png)
+
+### How it is put together
+
+| Part | What |
+|---|---|
+| `src/core/afpsrv/afps_asp.c` | the server end of ASP (Inside AppleTalk, ch. 11): GetStatus, OpenSess, Command, Write with its WriteContinue, Tickle, CloseSess, Attention; repeated exactly-once requests dropped; sessions that are silent for two minutes closed. One ATP socket is the listening socket and every session's socket. ATP itself is the transport's (`AsTransport`) |
+| `src/core/afpsrv/afps_afp.c` | the AFP 2.0/2.1 calls System 7's AppleShare client makes (Inside AppleTalk, ch. 13), on Lagoon's VFS, so every backend works: FPLogin (guest, and clear text when a user is configured), FPGetSrvrParms, FPOpenVol, FPGetVolParms, FPGetFileDirParms, FPEnumerate (a folder's listing kept for the following pages), FPCreateFile/Dir, FPDelete, FPRename, FPMoveAndRename, FPSetFileDirParms, FPOpenFork, FPRead, FPWrite, FPGetForkParms, FPSetForkParms, FPFlushFork, FPCloseFork, FPByteRangeLock (granted), FPMapID, FPGetUserInfo, FPGetSrvrMsg, the desktop calls (empty: the Finder draws generic icons), comments through the share's notes where the backend keeps them |
+| `src/core/afpsrv/afps_names.c` | Mac Roman names, 31 bytes; a name Mac Roman cannot spell, or a longer one, is shown "start#ID" as Netatalk shows it and found again by the ID. `/` in a Mac name is `:` on the server. A table gives every folder (and every file the client has seen) a fixed ID for as long as the server runs; AFP pathnames (NUL-separated, extra NULs going up) are resolved through it |
+| `src/core/afpsrv/afps_adouble.c` | Finder info and resource forks in AppleDouble `._name` files beside the file, as macOS and Samba's vfs_fruit keep them. A file without one gets a type and creator from its extension (`.txt` is TEXT/ttxt). `._` files, `.DS_Store` and Netatalk's folders are never shown; dot files are invisible |
+| `src/core/afpsrv/afps_relay.c` | NBP lookup answers and the relay of the second node (below) |
+| `tests/t_afpsrv.c` | a scripted AppleShare client against the server over an in-memory ATP, on the mem backend: GetStatus parsed by Lagoon's own AFP client code, sessions, logins, listing in pages, writes through WriteContinue, reads limited by the requester's room, Finder info and resource forks in `._` files, renames and moves, deletes, NBP matching, the relay (234 checks; `make test`) |
+| `src/mac/bridge/lm_bridge.c` | the Mac side: the server's transport on `.ATP` (POpenATPSkt, PGetRequest, PSendResponse, PNSendRequest, PKillSendReq), the multinode (AddNode, NetWrite, RemoveNode), the thread, start, stop and `PBVolumeMount` |
+| `src/mac/bridge/bridge_glue.S` | the context switch, the Time Manager task, the deferred task, the completion routine and the multinode's receive routine; the traps as fixed words |
+| `src/mac/bridge/lm_pool.c` | the thread's memory |
+| `src/mac/ethertalk/` | Lagoon EtherTalk now gives .MPP up to three multinodes besides the user node, and hands datagrams for this Mac's own nodes back up from a deferred task |
+| `src/mui/lm_gui.c` | **Put on Desktop** (`LM_BRIDGE`, the Mac build only); strings in all five catalogs |
+
+### Why a second node
+
+The first version registered "*share*:AFPServer@*" with the Mac's NBP on its own .ATP socket.
+The Chooser listed it and PBVolumeMount found it, but the AppleShare client gave up at once with
+-5063, afpSameNodeErr: it does not use a server on its own node, and sends it nothing. A
+multinode (Inside Macintosh: Networking, ch. 12) is the AppleTalk Manager's way for a Mac to be
+another node: .MPP gives it an address and hands its datagrams, and every broadcast, to a receive
+routine. It has no NBP and no ATP of its own, so the bridge answers NBP lookups for the share's
+name there itself (and AppleTalk Echo, which the client sends the server's node first), and passes
+every other datagram on, changing only the DDP addresses, to the server's .ATP socket on the user
+node, and the server's answers back to the client. ATP (with exactly-once transactions), ASP and
+AFP stay on the user node, on Apple's .ATP. The relay knows one client node at a time: this Mac.
+
+Three things the testbed showed on the way:
+- .MPP did not loop datagrams between the user node and the multinode itself, as the plan
+  above expected: both directions came to Lagoon EtherTalk's write hook, which asked AARP for its
+  own addresses. The 'atlk' now answers AGetNodeRef for every node it holds and queues a
+  datagram for one of its own nodes, to go up from a deferred task as if it had come in (never
+  from inside the write, which may be .MPP's own while its Read Header Area is in use). For the
+  loopback .MPP puts five bytes in the multinode's header area, for a frame from the wire sixteen.
+- System 7.1's .ATP leaves PGetRequest's `reqTID` (offset 22) at 0 and puts the transaction ID
+  where Inside Macintosh II had it, `transID` at 46, with atpFlags' tidValid bit clear. Answered
+  with TID 0, the client never took a response and gave up with aspNoServers (-1069).
+- AddNode was first given the user node's own address back; AAddNode now refuses an address
+  the 'atlk' already holds, and .MPP picks another.
+
+### Why the server runs on a thread at deferred-task time
+
+The AppleShare client is called synchronously by whatever program is in front: the Finder asks
+for a folder's contents with a File Manager call and spins in it until the answer is there, and
+System 7 changes programs only at WaitNextEvent. A server that answered from Lagoon's event loop
+would get no time as soon as the Finder waited on it; PBVolumeMount, called by Lagoon itself,
+would wait for a server that cannot run. So the server runs at deferred-task time, which comes
+after every interrupt whatever program runs, spinning or not.
+
+What the server does is the VFS (SMB, NFS or AFP over TCP through Riptide), which waits for the
+network in many places. So it runs on a thread of its own, a 64 KB stack switched to from a
+deferred task and switched away from whenever it waits, Riptide's waits included: the thread has
+a Riptide client of its own, whose yield goes back to the deferred task (`lm_yield`,
+`mac_main.c`). A Time Manager task asks for the deferred task every few milliseconds while the
+thread waits, and every AppleTalk completion (and the multinode's receive routine) asks at once.
+
+What running at interrupt time rules out, and how it is kept out:
+- the Memory Manager: the thread's `ln_alloc` comes from a 768 KB pool taken at start
+  (`sys_mac.c`, `lm_pool.c`; Lagoon's partition is now 2 MB);
+- the Toolbox: the host name and the time zone are looked up by the application first;
+- Riptide's core is one program's at a time (riptide `os_mac.c`, `mac_core_enter` is a flag, not
+  a lock): calls from the application count in `lm_app_core` (`net_mac.c`), the deferred task
+  leaves the thread alone while it is up, and the application's own waits put the count aside
+  (Riptide has left its core before it yields);
+- the stack sniffer (a VBL task that takes a stack below the heap's top for a collision, System
+  Error 28): `StkLowPt` ($110) is 0 while the thread runs;
+- self-modifying trap calls (riptide's `mac_pb` writes the trap word into its own code, which
+  the application may be in the middle of): the thread's traps are fixed words.
+The drivers are opened, intranode delivery switched on, the socket made and the multinode added
+by the application before the thread starts.
+
+### Tested (18 November 2026, Aurora68's QEMU testbed, System 7.1)
+
+Lagoon EtherTalk chosen (`mac.xpram=e0:098100a8`), Riptide with DHCP, Lagoon's private Samba
+(`tests/servers/smb`) on the host through pinet (`PINET_FORWARD=445=127.0.0.1:4450`), mouse and
+keyboard through QEMU's USB devices. These worked:
+- **Put on Desktop**: the thread connects to `smb://192.168.68.1/guest` (SMB 3.1.1, guest) and to
+  `smb://192.168.68.1/plain` (user lagoon, signed), the multinode answers the client's NBP lookup,
+  AEP echo, GetStatus, OpenSess, FPLogin as guest, FPGetSrvrParms, FPOpenVol, and
+  PBVolumeMount returns 0: the volume's icon is on the desktop (log: `bridge: PBVolumeMount 0`);
+- the volume opens in the Finder (three items: a folder, Hello.txt with a text icon, random.bin),
+  a folder opens (`images/mac-bridge-folder.png`), Hello.txt opens in SimpleText with its text;
+- random.bin (70,000 random bytes) dragged from the share to the Mac's disk: the copy on the Mac
+  disk matches the server's byte for byte (`cmp`; fifteen FPReads of 4608 bytes and one of 880
+  ending in EOFErr; `images/mac-bridge-copy.png`);
+- SimpleText dragged from the Mac's disk to the share: on the Samba side `SimpleText` (data
+  fork, 0 bytes) and `._SimpleText` (AppleDouble: Finder info APPL/ttxt, the 76,212-byte
+  resource fork, identical to the original's), and the Finder shows it on the share with its
+  icon (`images/mac-bridge-to-share.png`);
+- Put Away: FPCloseVol, CloseSess, the icon goes; then the Chooser lists the share, connecting as
+  Guest gives the volume list and mounts it again (`images/mac-bridge-volumes.png`);
+- quitting Lagoon with the volume mounted: the client is told (Attention), AppleShare says "The
+  file server has closed down" (`images/mac-bridge-closed.png`), Lagoon ends cleanly (thread
+  stopped, multinode removed).
+
+`make test` on the host passes (t_afpsrv 234 checks, and the other tests as before).
+
+Not working or not known yet:
+- **Two system errors in long sessions, cause not found.** SimpleText ("bad F-Line
+  instruction") after opening Hello.txt from the share, nine minutes into a session with many
+  copies; the Finder (the same error) on opening the Apple menu seven minutes into another. Both
+  were in the programs' own code (an undefined instruction at a PC in their heap first), not in
+  Lagoon's, the 'atlk' or Riptide. Other sessions of similar length ran clean. Whether the bridge
+  causes them (a register or memory the deferred-task thread disturbs) or the testbed's
+  translator does (docs/08 items 42 and 44 in Aurora68 record F-line errors from other causes)
+  is open. The next step is a session with the bridge running and idle against one without it,
+  diffing low memory and the trap tables as item 44 did.
+- One hang (run 10): the Chooser, with the same server's volume already mounted, stopped in a
+  synchronous wait after its NBP lookups; directed lookups to the multinode (PConfirmName) were
+  not answered then. They are now; the same steps on the next run (with the volume put away
+  first) worked, but the exact case was not repeated.
+- Not tried: NFS and AFP shares through the bridge (the VFS is the same, but no server here);
+  registered-user login from the Mac (the server supports clear text when configured, the GUI
+  offers guest only); LocalTalk or another 'atlk'; another Mac on the network using the bridge;
+  real hardware; performance (copies ran at testbed speed, not measured).
+- Known limits: one share at a time; the Finder writes Finder info for items it shows, so
+  browsing leaves `._` files beside them on the share (as a Mac running macOS does); volumes
+  larger than 2 GB show as 2 GB (AFP 2.x counts in 32 bits); the desktop database is empty
+  (generic icons for documents of applications the Mac does not have); the volume's dates and
+  the "closed down" time are the Mac's clock's.
+
+### Installing
+
+`make -f Makefile.mac` builds `build/mac/Lagoon.bin` and `build/mac/LagoonEtherTalk.bin`
+(`AURORA68=1` for the testbed's log). Lagoon EtherTalk goes into the Extensions folder and is
+chosen in the Network control panel (above); Lagoon anywhere, with Riptide installed. The
+bridge needs nothing else.
