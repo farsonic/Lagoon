@@ -44,12 +44,13 @@ the Aurora68 repository) relays TCP to Lagoon's private Samba (`tests/servers/sm
 `make test` on the host passes: 2936 checks against Samba, plus the unit tests.
 
 Not tested: AFP and NFS from the Mac (no Netatalk or nfs-ganesha on the test host), Browse network
-on the Mac (the mDNS relay is written, the run was cut short), Amiga MUI build.
+on the Mac (the testbed's mDNS relay is written, but the run was cut short), and the Amiga MUI
+build. Two fixes made after the tested run have not been tried on the Mac yet: status lines that
+redraw while shown (riptide 009a191), and the yes/no window without a text field.
 
 Known gaps: files are copied by their data fork only (resource forks and Finder types are not
 carried yet: AppleDouble or the AFP fork calls would do it), the password field shows what is
-typed (the Mac's MUI has no secret string yet), and long copies show their progress only when
-they end on the Mac (the status line now redraws; check after the fix).
+typed (the Mac's MUI has no secret string yet).
 
 ## AppleTalk: Lagoon's own EtherTalk (the next stage)
 
@@ -64,6 +65,12 @@ Aurora68 images have none. Lagoon for the Mac is to bring its own:
 2. **AppleShare in the Chooser** then finds AFP-over-AppleTalk servers on the Ethernet: Netatalk
    2.x with atalkd, or a small NBP/ATP/ASP responder in the testbed's peer. The Mac's own
    AppleShare client mounts their volumes in the Finder.
+   What there is to go on: System 7.1 keeps its own AppleTalk pieces in the System file, the
+   LAP Manager ('lmgr' 0), the built-in LocalTalk ('atlk' 1 and 3, 'ltlk' 0-3) and .MPP
+   ('DRVR' 9), all of them compressed resources (the A89F6572 header, Apple's 'dcmp'
+   compression). Reading the LocalTalk 'atlk' is the nearest example of the interface, so it
+   needs a dcmp decompressor first. The AppleTalk Connections Programmer's Guide, with the
+   'adev' selectors and the LAP Manager calls, was not available offline when this was written.
 3. **Lagoon's bridge.** A share Lagoon reaches over TCP (SMB, NFS, AFP over TCP) is offered to
    the Mac's AppleShare client as an AFP-over-AppleTalk server that lives in the Mac itself:
    intranode delivery, so the packets never leave the machine. Lagoon's backends answer the AFP
