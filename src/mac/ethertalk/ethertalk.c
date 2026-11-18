@@ -63,7 +63,7 @@ static void a68_log(const char *s, u32 n)
 /* %s %c %d %u %x with an optional zero-padded width, nothing else */
 static void et_log(const char *fmt, ...)
 {
-	char line[160], *o = line, *end = line + sizeof line - 1;
+	char line[240], *o = line, *end = line + sizeof line - 1;
 	const char *pre = "EtherTalk: ";
 	__builtin_va_list ap;
 	while (*pre) *o++ = *pre++;
@@ -90,7 +90,8 @@ static void et_log(const char *fmt, ...)
 }
 #define LOG(...) et_log(__VA_ARGS__)
 #else
-#define LOG(...) do { } while (0)
+static inline void et_nolog(const char *fmt, ...) { (void)fmt; }   /* no log: the calls vanish */
+#define LOG(...) et_nolog(__VA_ARGS__)
 #endif
 
 /* ---- state ---- */
@@ -113,7 +114,7 @@ static struct {
 	u32 node;                       /* our address (network << 8 | node); 0 = none */
 	u32 tentative;                  /* the address being probed for */
 	volatile u8 conflict;           /* somebody answered for the tentative address */
-	u8  logged_rx;                  /* first frames: their headers go to the log */
+	u8  logged_rx, logged_tx;       /* the first frames each way go to the log */
 	u32 rx_ddp, rx_aarp, tx_frames, tx_drops;
 } g;
 static struct amt amt[AMT_SIZE];
@@ -122,6 +123,7 @@ static struct pend pend[NPEND];
 static struct { void *qlink; s16 qtype; void *addr; s16 count, phase; } __attribute__((packed)) vbl;
 u32 et_d1_out;
 u8 et_rxbuf[1536];
+u16 et_rp_calls, et_rr_calls;
 
 static const u8 bcast[6] = { 0x09, 0x00, 0x07, 0xFF, 0xFF, 0xFF };   /* AppleTalk broadcast, Phase 2 */
 static const u8 llc_ddp[8] = { 0xAA, 0xAA, 0x03, 0x08, 0x00, 0x07, 0x80, 0x9B };
@@ -246,6 +248,11 @@ long et_write(const u8 *wds, u8 *mpp, long enq, u32 dest)
 	}
 	if (g.tx_frames < 4)
 		LOG("write %u bytes to %x, LAP header %02x %02x %02x", len, dest, lap[0], lap[1], lap[2]);
+	if ((dest & 0xFF) != 0xFF && g.logged_tx < 4) {
+		const u8 *h = frame_tmp + 8;
+		g.logged_tx++;
+		LOG("unicast to %x: DDP %d.%d:%d -> %d.%d:%d type %d", dest, get16(h + 6), h[9], h[11], get16(h + 4), h[8], h[10], h[12]);
+	}
 	dest &= 0xFFFFFF;
 	sr = et_irq_off();
 	if ((dest & 0xFF) == 0xFF)
@@ -275,7 +282,7 @@ long et_write(const u8 *wds, u8 *mpp, long enq, u32 dest)
 /* ---- in from the wire ---- */
 static void log_header(const char *what, const u8 *rha_next, long len)
 {
-	if (g.logged_rx >= 6)
+	if (g.logged_rx >= 2)
 		return;
 	g.logged_rx++;
 	LOG("%s %d bytes; before A3: %02x%02x%02x%02x%02x%02x %02x%02x%02x%02x%02x%02x %02x%02x %02x%02x %02x%02x%02x %02x%02x%02x%02x%02x",
@@ -325,8 +332,10 @@ void et_rx_ddp(const u8 *rha_next, const u8 *pkt, long len)
 	g.rx_ddp++;
 	log_header("DDP", rha_next, len);
 	if (len >= 8 + 13 && same6(pkt, llc_ddp) && pkt[6] == llc_ddp[6] && pkt[7] == llc_ddp[7]) { pkt += 8; len -= 8; }
-	if (len < 13 || !g.open || !g.mpp)
+	if (len < 13 || !g.open || !g.mpp) {
+		if (g.rx_ddp <= 3) LOG("DDP dropped: open %d, .MPP %x", g.open, (u32)g.mpp);
 		return;
+	}
 	ddplen = get16(pkt) & 0x3FF;
 	if (ddplen < 13 || ddplen > len)
 		return;
@@ -335,19 +344,30 @@ void et_rx_ddp(const u8 *rha_next, const u8 *pkt, long len)
 		return;                                     /* not for us, and we are no router */
 	if (dnet && g.node && dnet != (u16)(g.node >> 8) && dnode != 0xFF)
 		return;
-#ifdef ET_GLEAN   /* off until the testbed's log confirms where the LAP Manager keeps the header */
+	/* the LAP Manager keeps the frame's header behind A3: two bytes, the destination at -22,
+	   the source at -16, the 802.3 length at -10, then LLC and SNAP (Aurora68's testbed log;
+	   Technote NW 13 says -24 for the destination, two bytes further back) */
 	if ((get16(pkt) >> 10 & 0xF) == 0 && get16(pkt + 6)) {   /* hop count 0: its sender is on this wire */
 		u16 sr = et_irq_off();
-		amt_learn((u32)get16(pkt + 6) << 8 | pkt[9], rha_next - 18);   /* Technote NW 13: source at -18(A3) */
+		amt_learn((u32)get16(pkt + 6) << 8 | pkt[9], rha_next - 16);   /* hop count 0: glean its sender */
 		et_irq_restore(sr);
 	}
-#endif
 	/* .MPP's Read Header Area at 1(A2): the LAP header as LocalTalk would have it, then the
-	   datagram's first two bytes; .MPP reads the rest of the 13-byte header itself */
+	   whole 13-byte long DDP header. LRdDispatch is .MPP's own routine (the LAP Manager jumps
+	   through 1052(A2)), and on an extended network it compares the header's destination,
+	   8(A2) and 12(A2), with the node's address before reading anything: with LocalTalk's five
+	   bytes there it saw 0.0 and dropped every datagram (the testbed's log, 18 November) */
 	rha = g.mpp + 1;
 	rha[0] = dnode; rha[1] = pkt[9]; rha[2] = LAP_TYPE_LONG;
-	rha[3] = pkt[0]; rha[4] = pkt[1];
-	et_deliver(g.mpp, rha + 5, (u8 *)pkt + 2, (long)ddplen - 2, (long)0xFFFF0000 | LAP_TYPE_LONG);
+	memcpy(rha + 3, pkt, 13);
+	{
+		u16 rp = et_rp_calls, rr = et_rr_calls;
+		u32 d2 = 0xFFFF0000 | LAP_TYPE_LONG;            /* the user node's reference, the LAP type */
+		long r = et_deliver(g.mpp, rha + 16, (u8 *)pkt + 13, (long)ddplen - 13, (long)d2);
+		if (g.rx_ddp <= 3)
+			LOG("up: %d bytes for %d.%d:%d, %s, ReadPacket %d ReadRest %d", ddplen, dnet, dnode, pkt[10],
+			    r ? "no handler" : "taken", et_rp_calls - rp, et_rr_calls - rr);
+	}
 }
 
 /* ---- the VBL task, every fifth of a second: ask again for next hops nobody has named ---- */

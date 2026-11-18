@@ -112,7 +112,8 @@ long et_lapmgr(long d0, long d1, long d2, long d4, void *a0, void *a1);   /* a L
 void et_flush_caches(void);
 u16  et_irq_off(void);                          /* raise to level 7, the old SR back */
 void et_irq_restore(u16 sr);
-void et_deliver(void *mpp, u8 *rha_next, u8 *data, long left, long d2);   /* LRdDispatch */
+long et_deliver(void *mpp, u8 *rha_next, u8 *data, long left, long d2);   /* LRdDispatch: 0 = taken */
+extern u16 et_rp_calls, et_rr_calls;            /* our ReadPacket and ReadRest, called */
 u32  et_ticks(void);
 extern char et_aarp_spec[], et_ddp_spec[];      /* the 802.2 protocol specifications */
 void et_aarp_ph(void), et_ddp_ph(void), et_vbl(void);   /* register-level entries */

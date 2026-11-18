@@ -132,7 +132,7 @@ rx_aarp:
 
 | ---- delivering up: LRdDispatch, with our ReadPacket over a datagram held in memory ----
 	.globl	et_deliver
-et_deliver:				| void et_deliver(mpp, rha_next, data, left, d2)
+et_deliver:				| long et_deliver(mpp, rha_next, data, left, d2): 0 = a handler took it
 	movem.l	%d2-%d7/%a2-%a6,-(%sp)	| 44 bytes
 	move.l	48(%sp),%a2
 	move.l	52(%sp),%a3
@@ -140,21 +140,26 @@ et_deliver:				| void et_deliver(mpp, rha_next, data, left, d2)
 	move.l	60(%sp),%d1		| D1: bytes left
 	move.l	64(%sp),%d2
 	lea	readpacket(%pc),%a4
+	moveq	#0,%d7			| handlers keep D4-D7: still 0 if one ran
 	bsr.s	1f			| the handler's RTS lands after this
+	move.l	%d7,%d0
 	movem.l	(%sp)+,%d2-%d7/%a2-%a6
 	rts
 1:	move.l	0x0B18,%a1		| LAPMgrPtr
 	moveq	#1,%d0			| LRdDispatch
 	jsr	2(%a1)
-	rts				| no handler for the type: back the same way
+	moveq	#1,%d7			| back here: nobody has the type
+	rts
 
 | ReadPacket (A4): D3 = bytes wanted, into (A3)+. Z set when done; more than there is: Z clear.
+| Both keep every register but D0, D1, D3, A0 and A3, as .MPP's own do.
 | ReadRest (2(A4)): A3 = buffer, D3 = its size; copies what fits, D3 = size - bytes there were
 | (System 7.1's .MPP answers the same for its own intranode delivery). A0 and D1 are the state.
 readpacket:
 	bra.s	rp_packet
 	bra.s	rp_rest
 rp_packet:
+	addq.w	#1,et_rp_calls
 	cmp.w	%d1,%d3
 	bhi.s	2f
 	sub.w	%d3,%d1
@@ -166,15 +171,16 @@ rp_packet:
 	rts
 2:	moveq	#-92,%d0		| eLenErr; Z clear
 	rts
-rp_rest:
-	move.w	%d3,%d2
-	cmp.w	%d1,%d2
+rp_rest:				| only D0, D1, D3 change: .MPP's echo responder keeps its place
+	addq.w	#1,et_rr_calls		| in D2 across this call (System 7.1's own ReadRest leaves D2;
+	move.w	%d3,%d0			| the first version counted in D2, and echo replies went to 0.0:0)
+	cmp.w	%d1,%d0
 	bls.s	1f
-	move.w	%d1,%d2			| the buffer is bigger: copy what there is
+	move.w	%d1,%d0			| the buffer is bigger: copy what there is
 1:	sub.w	%d1,%d3
 	bra.s	3f
 2:	move.b	(%a0)+,(%a3)+
-3:	dbf	%d2,2b
+3:	dbf	%d0,2b
 	moveq	#0,%d1
 	moveq	#0,%d0			| Z set
 	rts

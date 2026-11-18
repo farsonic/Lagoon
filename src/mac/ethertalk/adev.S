@@ -12,7 +12,11 @@
 |                  the chosen icon is the one already in use; it is answered the same way.
 | One icon per Ethernet card (Slot Manager category catNetwork, type typeEtherNet), so a Mac with
 | two cards, or Aurora68 with its wired and Wi-Fi units, shows two. The cookie and the parameter
-| RAM bytes are the card's slot and sResource ID. Names are the product's, not translated.
+| RAM bytes are the card's slot and sResource ID. The panel draws "Name (x)" as two lines, as it
+| does Apple's own: "Name", then "Slot #x" ("Built-In" for 0, "Alternate" for A: its STR# -4048
+| 14-16); "Lagoon EtherTalk" on one line is wider than an icon's label. So the labels read
+| "Lagoon / Slot #9" and "Lagoon Wi-Fi / Slot #9", the slot as a hex digit, lower case so that
+| slot $A does not read as "Alternate". The words are the product's, not translated.
 | Only PC-relative addressing: the 'adev' is not relocated. Pascal rules: D3-D7/A2-A6 kept.
 | SPDX-License-Identifier: GPL-2.0-only
 
@@ -74,7 +78,12 @@ getadev:
 	lea	name_wifi(%pc),%a1
 	bra.s	3f
 2:	lea	name_wired(%pc),%a1
-3:	moveq	#0,%d0			| one, not the one in use ...
+3:	moveq	#0,%d0
+	move.b	(%a1),%d0
+	moveq	#0,%d3
+	move.b	49(%a0),%d3		| the slot, as one hex digit before the closing parenthesis
+	move.b	hexdigits(%pc,%d3.w),-1(%a1,%d0.w)
+	moveq	#0,%d0			| one, not the one in use ...
 	cmp.b	#ET_RSRC_ID,%d4
 	bne.s	4f
 	move.l	%d4,%d3
@@ -89,10 +98,12 @@ none:	moveq	#1,%d0
 	unlk	%a6
 	rts
 
-name_wired:
-	.byte	16
-	.ascii	"Lagoon EtherTalk"
+hexdigits:
+	.ascii	"0123456789abcdef"
+name_wired:				| (the adev is in RAM: the slot digit is written in place)
+	.byte	10
+	.ascii	"Lagoon (9)"
 name_wifi:
-	.byte	22
-	.ascii	"Lagoon EtherTalk Wi-Fi"
+	.byte	16
+	.ascii	"Lagoon Wi-Fi (9)"
 	.even
