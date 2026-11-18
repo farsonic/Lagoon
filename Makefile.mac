@@ -45,7 +45,7 @@ GEN_H    := $(patsubst %,$(GEN)/%_calls.h,exec dos timer locale battclock intuit
 TRAPS    := $(R)/src/mac/app/traps.txt
 HDRS     := $(wildcard src/core/*.h src/core/*/*.h src/mac/*.h src/mui/*.h) $(GEN_H)
 
-all: $(B)/Lagoon.bin
+all: $(B)/Lagoon.bin $(B)/LagoonEtherTalk.bin
 
 $(GEN)/toolbox_gen.h $(GEN)/toolbox_glue.S: $(TRAPS) $(R)/tools/mac_traps.py
 	@mkdir -p $(GEN)
@@ -85,6 +85,28 @@ $(B)/Lagoon.elf: $(RT_OBJ) $(LN_OBJ) $(R)/src/mac/app/app.ld
 $(B)/Lagoon.bin: $(B)/Lagoon.elf $(R)/tools/elf2app.py
 	$(PYTHON) $(R)/tools/elf2app.py $< --name Lagoon --creator LAGN --size 1024 -o $@
 
+# Lagoon EtherTalk: an AppleTalk connection file ('adev' and 'atlk', src/mac/ethertalk; docs/mac.md)
+ET_CFLAGS := -m68020 -O2 -std=gnu99 -ffreestanding -fno-builtin -fno-pic -fno-pie -ffixed-a5 -msoft-float \
+             -fno-asynchronous-unwind-tables -fno-unwind-tables -fno-stack-protector -ffunction-sections \
+             -fdata-sections -Wall -Wextra -Wno-unused-parameter --param=min-pagesize=0
+ifeq ($(AURORA68),1)
+ET_CFLAGS += -DAURORA68_LOG
+endif
+$(B)/et/%.o: src/mac/ethertalk/%.c src/mac/ethertalk/ethertalk.h
+	@mkdir -p $(dir $@)
+	$(CC) $(ET_CFLAGS) -c -o $@ $<
+$(B)/et/%.o: src/mac/ethertalk/%.S
+	@mkdir -p $(dir $@)
+	$(CC) -m68020 -c -o $@ $<
+$(B)/et/atlk.elf: $(B)/et/atlk_glue.o $(B)/et/ethertalk.o src/mac/ethertalk/atlk.ld
+	$(LD) -T src/mac/ethertalk/atlk.ld --emit-relocs --gc-sections --no-warn-rwx-segments -z noexecstack -o $@ \
+	      $(B)/et/atlk_glue.o $(B)/et/ethertalk.o $(LIBGCC) -Map $(B)/et/atlk.map
+$(B)/et/adev.bin: $(B)/et/adev.o
+	$(CROSS)objcopy -O binary -j .text $< $@
+$(B)/LagoonEtherTalk.bin: $(B)/et/adev.bin $(B)/et/atlk.elf tools/mkadev.py
+	$(PYTHON) tools/mkadev.py --riptide $(R) $(B)/et/adev.bin $(B)/et/atlk.elf -o $@
+ethertalk: $(B)/LagoonEtherTalk.bin
+
 # src/mui/lm_strings.h from the catalog description
 src/mui/lm_strings.h: src/mui/catalogs/Lagoon.cd tools/mkcatalog.py
 	$(PYTHON) tools/mkcatalog.py header $< $@ LM
@@ -92,4 +114,4 @@ src/mui/lm_strings.h: src/mui/catalogs/Lagoon.cd tools/mkcatalog.py
 clean-mac:
 	@mkdir -p build/old && mv $(B) build/old/mac-$$$$ 2>/dev/null || true
 
-.PHONY: all clean-mac
+.PHONY: all clean-mac ethertalk
