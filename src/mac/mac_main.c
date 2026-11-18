@@ -60,7 +60,7 @@ int main(void)
 	mm_gfx_init(sb[2] - sb[0] - LM_MBARHEIGHT - 20 < 560);
 	mm_screen_init(*(void **)a5);
 	mm_paths_init();
-	mm_log("Lagoon for the Mac starts");
+	mm_log("Lagoon for the Mac starts (code at %lx)", (unsigned long)(void *)main);
 	rc = lm_gui_run();
 	mm_log("Lagoon ends (%d)", rc);
 	return 0;

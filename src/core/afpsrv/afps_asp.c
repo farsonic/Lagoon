@@ -120,20 +120,29 @@ static void sess_close(AfpsServer *s, AfpsSess *se, int tell)
 	memset(se, 0, sizeof *se);
 }
 
-void afps_free(AfpsServer *s)
+void afps_shutdown(AfpsServer *s)
 {
 	int i;
 	u8 u[4];
 	u32 id;
-	if (!s)
-		return;
 	for (i = 0; i < AFPS_MAXSESS; i++)
-		if (s->sess[i].used) {
+		if (s->sess[i].used && !s->sess[i].warned) {
 			/* AFP's attention code: bit 15, the server shuts down, in 0 minutes */
 			user4(u, SP_ATTENTION, s->sess[i].id, 0x80, 0x00);
 			s->t.request(s->t.ud, s->sess[i].wss, u, NULL, 0, 0, 1, 2, 2, &id);
-			sess_close(s, &s->sess[i], 1);
+			s->sess[i].warned = 1;
 		}
+}
+
+void afps_free(AfpsServer *s)
+{
+	int i;
+	if (!s)
+		return;
+	afps_shutdown(s);
+	for (i = 0; i < AFPS_MAXSESS; i++)
+		if (s->sess[i].used)
+			sess_close(s, &s->sess[i], 1);
 	afps_afp_free(s);
 	afps_names_free(&s->names);
 	ln_free(s);

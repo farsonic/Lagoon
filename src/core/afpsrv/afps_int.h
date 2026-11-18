@@ -135,6 +135,7 @@ int  afps_hidden_name(const char *name);
 typedef struct AfpsSess {
 	u8     used, id;
 	u8     logged_in, vol_open;
+	u8     warned;           /* told the server is going down */
 	AsAddr wss;              /* the workstation's session socket */
 	u32    last_rx;          /* ln_ms() of the last packet from the workstation */
 	u32    tickle;           /* the request ID of our tickle, 0 = none */

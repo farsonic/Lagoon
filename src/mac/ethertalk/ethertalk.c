@@ -616,8 +616,8 @@ static long install(u32 pram, u8 port)
 	if (et_lapmgr(L_WRTINSERT, 0, 0, port, _start, NULL) != 0) { LOG("AInstall: LWrtInsert failed"); shutdown(); return -1; }
 	g.installed = 1;
 	et_d1_out = (u32)slot << 24 | (u32)id << 16 | ET_RSRC_ID;
-	LOG("AInstall: slot %d id %x refnum %d address %02x:%02x:%02x:%02x:%02x:%02x",
-	    slot, id, g.refnum, g.mac[0], g.mac[1], g.mac[2], g.mac[3], g.mac[4], g.mac[5]);
+	LOG("AInstall: slot %d id %x refnum %d address %02x:%02x:%02x:%02x:%02x:%02x, code at %x",
+	    slot, id, g.refnum, g.mac[0], g.mac[1], g.mac[2], g.mac[3], g.mac[4], g.mac[5], (u32)_start);
 	return 0;
 }
 

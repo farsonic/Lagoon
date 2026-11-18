@@ -384,7 +384,7 @@ static int poll_calls(void)
 			q.len = (size_t)(unsigned short)W16(g->pb, PB_REQLEN);
 			afps_input(srv, &q);
 		}
-		if (!stop_wanted && res != -1105)        /* reqAborted: the socket is closing */
+		if (srv && res != -1105)                 /* reqAborted: the socket is closing */
 			arm(g);
 	}
 	for (i = 0; i < NREQ; i++) {
@@ -468,7 +468,9 @@ static int poll_multinode(void)
 			size_t dlen = len - 16, ddplen = ln_be16(h) & 0x3FF;
 			if (ddplen >= 13 && ddplen - 13 < dlen)
 				dlen = ddplen - 13;
-			if (h[8] == 0xFF && h[12] == 2) {
+			/* NBP: broadcast lookups, and those sent to the multinode's own names information
+			   socket (PConfirmName asks the address a lookup gave) */
+			if (h[12] == 2 && (h[8] == 0xFF || h[10] == 2)) {
 				u8 out[120], rh[13];
 				AsAddr to, me = vnode;
 				size_t n = afps_nbp_answer(d, dlen, (const char *)srv_name + 1, "AFPServer", me, out, sizeof out, &to);
@@ -561,19 +563,41 @@ void lmb_thread_main(void)
 		if (a || b)
 			continue;
 		if (ln_ms() - last_tick >= 1000) {
+			static unsigned ticks;
 			last_tick = ln_ms();
 			afps_tick(srv);
+			if (++ticks % 30 == 0) {             /* for the log: is everything moving? */
+				int i, rb = 0, qb = 0;
+				for (i = 0; i < NRSP; i++)
+					rb += br->rsp[i].busy && W16(br->rsp[i].pb, PB_RESULT) > 0;
+				for (i = 0; i < NREQ; i++)
+					qb += br->req[i].busy;
+				LN_LOG(2, "bridge: alive; Time Manager %lu, deferred %lu, thread %lu, Lagoon busy %lu; responses out %d, requests out %d, sessions %d",
+				       n_tm, n_dt, n_run, n_busy, rb, qb, afps_sessions(srv));
+			}
 		}
 		lmb_thread_yield(afps_sessions(srv) ? 20 : 100);
 	}
 done:
 	state = LMB_STOPPING;
 	if (srv) {
+		/* tell the AppleShare client the server is going down, and go on serving for a few
+		   seconds, so that it can put the volume away; then close what is left. The multinode
+		   relays to the end: without it, nothing reaches the client */
 		u32 t0 = ln_ms();
-		afps_free(srv);                          /* Attention and CloseSess to the client */
+		afps_shutdown(srv);
+		while (afps_sessions(srv) && ln_ms() - t0 < 8000) {
+			int a = poll_multinode(), b = poll_calls();
+			if (!a && !b)
+				lmb_thread_yield(20);
+		}
+		LN_LOG(1, "bridge: %d sessions left after %lu ms", afps_sessions(srv), (unsigned long)(ln_ms() - t0));
+		afps_free(srv);
 		srv = NULL;
-		for (;;) {                               /* let those go out, two seconds at most */
+		t0 = ln_ms();
+		for (;;) {                               /* let the CloseSess go out, two seconds at most */
 			int busy = 0;
+			poll_multinode();
 			poll_calls();
 			for (i = 0; i < NREQ; i++)
 				busy |= br->req[i].busy;

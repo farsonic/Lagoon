@@ -79,7 +79,11 @@ typedef struct AfpsServer AfpsServer;
 
 /* ops/fs: a mounted share the server uses (and does not unmount). The transport is copied. */
 AfpsServer *afps_new(const AfpsConfig *cfg, const LnOps *ops, LnFs *fs, const AsTransport *t);
-/* tells open sessions the server is going (ASP Attention, then CloseSess) and frees it */
+/* tells open sessions the server is going down now (ASP Attention, AFP's code $8000); the server
+ * goes on answering, so that the clients can log out and put their volumes away */
+void afps_shutdown(AfpsServer *s);
+/* closes what sessions are left (CloseSess; Attention first if afps_shutdown was not called)
+ * and frees the server */
 void afps_free(AfpsServer *s);
 /* a request arrived */
 void afps_input(AfpsServer *s, const AsReq *req);
