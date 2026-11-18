@@ -1,0 +1,163 @@
+## version $VER: Lagoon.catalog 0.2 (18.11.2026)
+## language español
+## codeset 0
+;
+MSG_APP_TITLE
+Lagoon
+;
+MSG_WIN_SHARES
+Lagoon - recursos de red
+;
+MSG_SHARES_HDR
+Sus recursos
+;
+MSG_BROWSE
+Explorar la red...
+;
+MSG_NEW
+Nuevo...
+;
+MSG_EDIT
+Editar...
+;
+MSG_REMOVE
+Quitar
+;
+MSG_CONNECT
+Conectar
+;
+MSG_SAVE
+Guardar
+;
+MSG_NO_SHARES
+Aún no hay recursos: Explorar la red... o Nuevo...
+;
+MSG_NO_STACK
+No hay ninguna pila TCP/IP en marcha.
+;
+MSG_CONNECTING
+Conectando con %s...
+;
+MSG_FAILED
+%s: %s
+;
+MSG_SAVED
+La lista de recursos está guardada.
+;
+MSG_SAVE_FAILED
+No se pudo guardar la lista de recursos.
+;
+MSG_EDITOR_TITLE
+Recurso
+;
+MSG_NAME
+Nombre
+;
+MSG_PROTOCOL
+Protocolo
+;
+MSG_SERVER
+Servidor
+;
+MSG_SHARE
+Recurso
+;
+MSG_USER
+Usuario
+;
+MSG_PASSWORD
+Contraseña
+;
+MSG_LIST
+Lista...
+;
+MSG_OK
+Aceptar
+;
+MSG_CANCEL
+Cancelar
+;
+MSG_PROTO_SMB
+SMB (Windows, macOS, Samba)
+;
+MSG_PROTO_AFP
+AFP (Mac antiguos, Netatalk)
+;
+MSG_PROTO_NFS
+NFS (Unix)
+;
+MSG_BROWSE_TITLE
+Servidores en la red
+;
+MSG_SEARCHING
+Buscando servidores...
+;
+MSG_FOUND
+%ld encontrados.
+;
+MSG_NONE_FOUND
+No se encontraron servidores.
+;
+MSG_USE
+Usar
+;
+MSG_SHARES_ON
+Recursos en %s
+;
+MSG_LISTING
+Pidiendo a %s sus recursos...
+;
+MSG_OPEN
+Abrir
+;
+MSG_UP
+Subir nivel
+;
+MSG_DOWNLOAD
+Descargar...
+;
+MSG_UPLOAD
+Enviar...
+;
+MSG_NEWFOLDER
+Carpeta nueva...
+;
+MSG_DELETE
+Borrar
+;
+MSG_CLOSE
+Cerrar
+;
+MSG_FOLDER_ITEM
+%s (carpeta)
+;
+MSG_FREE
+%s libres de %s
+;
+MSG_FOLDER_NAME
+Nombre de la carpeta nueva:
+;
+MSG_CONFIRM_DELETE
+¿Borrar %s en el servidor?
+;
+MSG_COPYING
+Copiando %s: %ld KB
+;
+MSG_DONE
+%s: hecho, %ld KB.
+;
+MSG_ASL_SAVE
+Guardar el archivo como
+;
+MSG_ASL_OPEN
+Elija un archivo para enviar
+;
+MSG_SELECT_FIRST
+Elija primero una entrada.
+;
+MSG_NEED_SERVER
+Escriba el servidor.
+;
+MSG_FILE_ERROR
+No se puede usar el archivo %s.
+;

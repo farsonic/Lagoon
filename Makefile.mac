@@ -1,0 +1,95 @@
+# Lagoon for the classic Mac OS (System 7, 68020 and later): the MUI front end (src/mui), the
+# core (src/core) and the Mac layer (src/mac) as one application, build/mac/Lagoon.bin
+# (MacBinary: copy it with `hcopy -m`). It runs on Riptide, the TCP/IP stack for the Mac, whose
+# tree provides the rest without copies (RIPTIDE, default ../riptide): the app kit
+# (src/mac/app), the MUI for the Mac (src/mac/mui) and its tools (gen_lvos.py, mac_traps.py,
+# elf2app.py). docs/mac.md tells the story.
+#
+#   make -f Makefile.mac               build/mac/Lagoon.bin
+#   make -f Makefile.mac AURORA68=1    the log also goes to the Pi kernel's log (Aurora68)
+#
+# Needs the m68k ELF toolchain (Debian/Ubuntu: gcc-m68k-linux-gnu, binutils-m68k-linux-gnu) and
+# Python 3.
+RIPTIDE ?= ../riptide
+CROSS   ?= m68k-linux-gnu-
+CC      := $(CROSS)gcc
+LD      := $(CROSS)ld
+PYTHON  ?= python3
+B       := build/mac
+GEN     := $(B)/gen
+GCCINC  := $(shell $(CC) -print-file-name=include)
+LIBGCC  := $(shell $(CC) -m68020 -print-libgcc-file-name)
+R       := $(RIPTIDE)
+
+CFLAGS  := -m68020 -O2 -std=gnu99 -ffreestanding -fno-builtin -fno-pic -fno-pie -ffixed-a5 -msoft-float \
+           -nostdinc -isystem $(GCCINC) -fno-asynchronous-unwind-tables -fno-unwind-tables -fno-stack-protector \
+           -ffunction-sections -fdata-sections -Wall -Wno-unused-parameter --param=min-pagesize=0 \
+           -I$(B) -I$(R)/src/mac/app -I$(R)/src/mac -I$(R)/src/mac/prefs -I$(R)/src/amiga/include -I$(R)/src/amiga \
+           -I$(R)/src/amiga/os -I$(R)/include -I$(R)/include/rt
+ifeq ($(AURORA68),1)
+CFLAGS  += -DAURORA68_LOG
+endif
+LN_CFLAGS := $(CFLAGS) -Isrc/core -Isrc/mui -include src/mac/mac_libc.h
+
+# Lagoon
+CORE_SRC := $(wildcard src/core/*.c src/core/*/*.c)
+LN_OBJ   := $(patsubst src/%.c,$(B)/ln/%.o,$(CORE_SRC) src/mac/sys_mac.c src/mac/net_mac.c src/mac/mac_main.c src/mui/lm_gui.c) \
+            $(B)/ln/mac/mac_thunks.o
+# Riptide's app kit and MUI for the Mac, and what they need of its core and libc
+RT_OBJ   := $(B)/rt/mac/app/crt0.o $(B)/rt/mac/app/ostraps.o $(B)/rt/gen/toolbox_glue.o \
+            $(patsubst %,$(B)/rt/mac/mui/%.o,mm_boopsi mm_app mm_area mm_group mm_gadgets mm_gfx mm_os mm_thunks) \
+            $(B)/rt/amiga/prefs/mui_util.o $(B)/rt/amiga/prefs/mui_theme.o \
+            $(B)/rt/core/printf.o $(B)/rt/amiga/libc.o
+GEN_H    := $(patsubst %,$(GEN)/%_calls.h,exec dos timer locale battclock intuition graphics gadtools icon \
+            muimaster openurl bsdsocket riptide usergroup) $(GEN)/toolbox_gen.h
+TRAPS    := $(R)/src/mac/app/traps.txt
+HDRS     := $(wildcard src/core/*.h src/core/*/*.h src/mac/*.h src/mui/*.h) $(GEN_H)
+
+all: $(B)/Lagoon.bin
+
+$(GEN)/toolbox_gen.h $(GEN)/toolbox_glue.S: $(TRAPS) $(R)/tools/mac_traps.py
+	@mkdir -p $(GEN)
+	$(PYTHON) $(R)/tools/mac_traps.py $(TRAPS) -s $(GEN)/toolbox_glue.S -H $(GEN)/toolbox_gen.h
+$(GEN)/%_calls.h: $(R)/src/amiga/os/os_lvos.txt $(R)/tools/gen_lvos.py $(TRAPS)
+	@mkdir -p $(GEN)
+	$(PYTHON) $(R)/tools/gen_lvos.py call proto $< $* $@ $(TRAPS)
+$(GEN)/muimaster_calls.h: $(R)/src/amiga/prefs/mui_lvos.txt $(R)/tools/gen_lvos.py $(TRAPS)
+	@mkdir -p $(GEN)
+	$(PYTHON) $(R)/tools/gen_lvos.py call proto $< muimaster $@ $(TRAPS)
+$(GEN)/openurl_calls.h: $(R)/src/amiga/prefs/openurl_lvos.txt $(R)/tools/gen_lvos.py $(TRAPS)
+	@mkdir -p $(GEN)
+	$(PYTHON) $(R)/tools/gen_lvos.py call proto $< openurl $@ $(TRAPS)
+$(GEN)/bsdsocket_calls.h $(GEN)/riptide_calls.h $(GEN)/usergroup_calls.h: $(GEN)/%_calls.h: $(R)/src/amiga/lib_lvos.txt $(R)/tools/gen_lvos.py $(TRAPS)
+	@mkdir -p $(GEN)
+	$(PYTHON) $(R)/tools/gen_lvos.py call proto $< $* $@ $(TRAPS)
+
+$(B)/ln/%.o: src/%.c $(HDRS)
+	@mkdir -p $(dir $@)
+	$(CC) $(LN_CFLAGS) -c -o $@ $<
+$(B)/ln/mac/mac_thunks.o: src/mac/mac_thunks.S
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) -c -o $@ $<
+$(B)/rt/%.o: $(R)/src/%.c $(GEN_H)
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) -c -o $@ $<
+$(B)/rt/%.o: $(R)/src/%.S $(GEN_H)
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) -c -o $@ $<
+$(B)/rt/gen/toolbox_glue.o: $(GEN)/toolbox_glue.S
+	@mkdir -p $(dir $@)
+	$(CC) $(CFLAGS) -c -o $@ $<
+
+$(B)/Lagoon.elf: $(RT_OBJ) $(LN_OBJ) $(R)/src/mac/app/app.ld
+	$(LD) -T $(R)/src/mac/app/app.ld --emit-relocs --gc-sections --no-warn-rwx-segments -z noexecstack -o $@ \
+	      $(RT_OBJ) $(LN_OBJ) $(LIBGCC) -Map $(B)/Lagoon.map
+$(B)/Lagoon.bin: $(B)/Lagoon.elf $(R)/tools/elf2app.py
+	$(PYTHON) $(R)/tools/elf2app.py $< --name Lagoon --creator LAGN --size 1024 -o $@
+
+# src/mui/lm_strings.h from the catalog description
+src/mui/lm_strings.h: src/mui/catalogs/Lagoon.cd tools/mkcatalog.py
+	$(PYTHON) tools/mkcatalog.py header $< $@ LM
+
+clean-mac:
+	@mkdir -p build/old && mv $(B) build/old/mac-$$$$ 2>/dev/null || true
+
+.PHONY: all clean-mac

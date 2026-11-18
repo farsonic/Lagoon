@@ -1,0 +1,163 @@
+## version $VER: Lagoon.catalog 0.2 (18.11.2026)
+## language deutsch
+## codeset 0
+;
+MSG_APP_TITLE
+Lagoon
+;
+MSG_WIN_SHARES
+Lagoon - Netzwerkfreigaben
+;
+MSG_SHARES_HDR
+Ihre Freigaben
+;
+MSG_BROWSE
+Netzwerk durchsuchen...
+;
+MSG_NEW
+Neu...
+;
+MSG_EDIT
+Bearbeiten...
+;
+MSG_REMOVE
+Entfernen
+;
+MSG_CONNECT
+Verbinden
+;
+MSG_SAVE
+Speichern
+;
+MSG_NO_SHARES
+Noch keine Freigaben: Netzwerk durchsuchen... oder Neu...
+;
+MSG_NO_STACK
+Es läuft kein TCP/IP-Stack.
+;
+MSG_CONNECTING
+Verbinde mit %s...
+;
+MSG_FAILED
+%s: %s
+;
+MSG_SAVED
+Die Freigabeliste ist gespeichert.
+;
+MSG_SAVE_FAILED
+Die Freigabeliste konnte nicht gespeichert werden.
+;
+MSG_EDITOR_TITLE
+Freigabe
+;
+MSG_NAME
+Name
+;
+MSG_PROTOCOL
+Protokoll
+;
+MSG_SERVER
+Server
+;
+MSG_SHARE
+Freigabe
+;
+MSG_USER
+Benutzer
+;
+MSG_PASSWORD
+Passwort
+;
+MSG_LIST
+Liste...
+;
+MSG_OK
+OK
+;
+MSG_CANCEL
+Abbrechen
+;
+MSG_PROTO_SMB
+SMB (Windows, macOS, Samba)
+;
+MSG_PROTO_AFP
+AFP (ältere Macs, Netatalk)
+;
+MSG_PROTO_NFS
+NFS (Unix)
+;
+MSG_BROWSE_TITLE
+Server im Netzwerk
+;
+MSG_SEARCHING
+Suche Server...
+;
+MSG_FOUND
+%ld gefunden.
+;
+MSG_NONE_FOUND
+Keine Server gefunden.
+;
+MSG_USE
+Übernehmen
+;
+MSG_SHARES_ON
+Freigaben auf %s
+;
+MSG_LISTING
+Frage %s nach Freigaben...
+;
+MSG_OPEN
+Öffnen
+;
+MSG_UP
+Hoch
+;
+MSG_DOWNLOAD
+Herunterladen...
+;
+MSG_UPLOAD
+Hochladen...
+;
+MSG_NEWFOLDER
+Neuer Ordner...
+;
+MSG_DELETE
+Löschen
+;
+MSG_CLOSE
+Schließen
+;
+MSG_FOLDER_ITEM
+%s (Ordner)
+;
+MSG_FREE
+%s frei von %s
+;
+MSG_FOLDER_NAME
+Name des neuen Ordners:
+;
+MSG_CONFIRM_DELETE
+%s auf dem Server löschen?
+;
+MSG_COPYING
+Kopiere %s: %ld KB
+;
+MSG_DONE
+%s: fertig, %ld KB.
+;
+MSG_ASL_SAVE
+Datei speichern als
+;
+MSG_ASL_OPEN
+Datei zum Hochladen wählen
+;
+MSG_SELECT_FIRST
+Bitte zuerst einen Eintrag wählen.
+;
+MSG_NEED_SERVER
+Bitte den Server angeben.
+;
+MSG_FILE_ERROR
+Die Datei %s kann nicht benutzt werden.
+;

@@ -1,0 +1,163 @@
+## version $VER: Lagoon.catalog 0.2 (18.11.2026)
+## language français
+## codeset 0
+;
+MSG_APP_TITLE
+Lagoon
+;
+MSG_WIN_SHARES
+Lagoon - partages réseau
+;
+MSG_SHARES_HDR
+Vos partages
+;
+MSG_BROWSE
+Parcourir le réseau...
+;
+MSG_NEW
+Nouveau...
+;
+MSG_EDIT
+Modifier...
+;
+MSG_REMOVE
+Retirer
+;
+MSG_CONNECT
+Connecter
+;
+MSG_SAVE
+Enregistrer
+;
+MSG_NO_SHARES
+Aucun partage : Parcourir le réseau... ou Nouveau...
+;
+MSG_NO_STACK
+Aucune pile TCP/IP n'est lancée.
+;
+MSG_CONNECTING
+Connexion à %s...
+;
+MSG_FAILED
+%s : %s
+;
+MSG_SAVED
+La liste des partages est enregistrée.
+;
+MSG_SAVE_FAILED
+Impossible d'enregistrer la liste des partages.
+;
+MSG_EDITOR_TITLE
+Partage
+;
+MSG_NAME
+Nom
+;
+MSG_PROTOCOL
+Protocole
+;
+MSG_SERVER
+Serveur
+;
+MSG_SHARE
+Partage
+;
+MSG_USER
+Utilisateur
+;
+MSG_PASSWORD
+Mot de passe
+;
+MSG_LIST
+Liste...
+;
+MSG_OK
+OK
+;
+MSG_CANCEL
+Annuler
+;
+MSG_PROTO_SMB
+SMB (Windows, macOS, Samba)
+;
+MSG_PROTO_AFP
+AFP (anciens Mac, Netatalk)
+;
+MSG_PROTO_NFS
+NFS (Unix)
+;
+MSG_BROWSE_TITLE
+Serveurs du réseau
+;
+MSG_SEARCHING
+Recherche des serveurs...
+;
+MSG_FOUND
+%ld trouvés.
+;
+MSG_NONE_FOUND
+Aucun serveur trouvé.
+;
+MSG_USE
+Utiliser
+;
+MSG_SHARES_ON
+Partages de %s
+;
+MSG_LISTING
+Demande des partages à %s...
+;
+MSG_OPEN
+Ouvrir
+;
+MSG_UP
+Remonter
+;
+MSG_DOWNLOAD
+Télécharger...
+;
+MSG_UPLOAD
+Envoyer...
+;
+MSG_NEWFOLDER
+Nouveau dossier...
+;
+MSG_DELETE
+Supprimer
+;
+MSG_CLOSE
+Fermer
+;
+MSG_FOLDER_ITEM
+%s (dossier)
+;
+MSG_FREE
+%s libres sur %s
+;
+MSG_FOLDER_NAME
+Nom du nouveau dossier :
+;
+MSG_CONFIRM_DELETE
+Supprimer %s sur le serveur ?
+;
+MSG_COPYING
+Copie de %s : %ld Ko
+;
+MSG_DONE
+%s : terminé, %ld Ko.
+;
+MSG_ASL_SAVE
+Enregistrer le fichier sous
+;
+MSG_ASL_OPEN
+Choisir un fichier à envoyer
+;
+MSG_SELECT_FIRST
+Choisissez d'abord une entrée.
+;
+MSG_NEED_SERVER
+Indiquez le serveur.
+;
+MSG_FILE_ERROR
+Impossible d'utiliser le fichier %s.
+;

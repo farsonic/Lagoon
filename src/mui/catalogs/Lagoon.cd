@@ -1,0 +1,164 @@
+; Lagoon - catalog description for the MUI front end (src/mui), English built in.
+; tools/mkcatalog.py builds src/mui/lm_strings.h from this file and
+; LOCALE:Catalogs/<language>/Lagoon.catalog from the .ct files.
+; SPDX-License-Identifier: GPL-2.0-only
+;
+MSG_APP_TITLE (0//)
+Lagoon
+;
+MSG_WIN_SHARES (//)
+Lagoon - network shares
+;
+MSG_SHARES_HDR (//)
+Your shares
+;
+MSG_BROWSE (//)
+Browse network...
+;
+MSG_NEW (//)
+New...
+;
+MSG_EDIT (//)
+Edit...
+;
+MSG_REMOVE (//)
+Remove
+;
+MSG_CONNECT (//)
+Connect
+;
+MSG_SAVE (//)
+Save
+;
+MSG_NO_SHARES (//)
+No shares yet: Browse network... or New...
+;
+MSG_NO_STACK (//)
+No TCP/IP stack is running.
+;
+MSG_CONNECTING (//)
+Connecting to %s...
+;
+MSG_FAILED (//)
+%s: %s
+;
+MSG_SAVED (//)
+The share list is saved.
+;
+MSG_SAVE_FAILED (//)
+Could not save the share list.
+;
+MSG_EDITOR_TITLE (//)
+Share
+;
+MSG_NAME (//)
+Name
+;
+MSG_PROTOCOL (//)
+Protocol
+;
+MSG_SERVER (//)
+Server
+;
+MSG_SHARE (//)
+Share
+;
+MSG_USER (//)
+User
+;
+MSG_PASSWORD (//)
+Password
+;
+MSG_LIST (//)
+List...
+;
+MSG_OK (//)
+OK
+;
+MSG_CANCEL (//)
+Cancel
+;
+MSG_PROTO_SMB (//)
+SMB (Windows, macOS, Samba)
+;
+MSG_PROTO_AFP (//)
+AFP (older Macs, Netatalk)
+;
+MSG_PROTO_NFS (//)
+NFS (Unix)
+;
+MSG_BROWSE_TITLE (//)
+Servers on the network
+;
+MSG_SEARCHING (//)
+Looking for servers...
+;
+MSG_FOUND (//)
+%ld found.
+;
+MSG_NONE_FOUND (//)
+No servers found.
+;
+MSG_USE (//)
+Use
+;
+MSG_SHARES_ON (//)
+Shares on %s
+;
+MSG_LISTING (//)
+Asking %s for its shares...
+;
+MSG_OPEN (//)
+Open
+;
+MSG_UP (//)
+Up
+;
+MSG_DOWNLOAD (//)
+Download...
+;
+MSG_UPLOAD (//)
+Upload...
+;
+MSG_NEWFOLDER (//)
+New folder...
+;
+MSG_DELETE (//)
+Delete
+;
+MSG_CLOSE (//)
+Close
+;
+MSG_FOLDER_ITEM (//)
+%s (folder)
+;
+MSG_FREE (//)
+%s free of %s
+;
+MSG_FOLDER_NAME (//)
+Name of the new folder:
+;
+MSG_CONFIRM_DELETE (//)
+Delete %s on the server?
+;
+MSG_COPYING (//)
+Copying %s: %ld KB
+;
+MSG_DONE (//)
+%s: done, %ld KB.
+;
+MSG_ASL_SAVE (//)
+Save the file as
+;
+MSG_ASL_OPEN (//)
+Choose a file to upload
+;
+MSG_SELECT_FIRST (//)
+Choose an entry first.
+;
+MSG_NEED_SERVER (//)
+Enter the server.
+;
+MSG_FILE_ERROR (//)
+Cannot use the file %s.
+;
