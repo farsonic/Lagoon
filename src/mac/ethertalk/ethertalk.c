@@ -555,17 +555,31 @@ static long open_card(u8 slot, u8 id)
 	return *(s16 *)(pb + 24);                       /* ioRefNum */
 }
 
-static int first_card(u8 *slot, u8 *id)
+/* The first card that opens, in the Slot Manager's order. Not just the first card: on Aurora68 the
+   wired port ($81) stays in the declaration ROM of a Pi 3B whose network chip then turns out to be
+   missing, and its driver refuses to open; the Wi-Fi ($83) after it is the one to use. */
+static long open_first_card(u8 *slot, u8 *id)
 {
 	u8 sp[56];
-	memset(sp, 0, sizeof sp);
-	*(u16 *)(sp + 40) = 4;                          /* spCategory: catNetwork */
-	*(u16 *)(sp + 42) = 1;                          /* spCType: typeEtherNet */
-	sp[48] = 3;                                     /* spTBMask: any driver, any hardware */
-	*(u32 *)(sp + 24) = 1;                          /* spParamData: disabled sResources too */
-	if (et_slotmgr(0x0C, sp)) return 0;             /* SGetTypeSRsrc */
-	*slot = sp[49]; *id = sp[50];
-	return 1;
+	u8 s = 0, i = 0;
+	for (int n = 0; n < 8; n++) {
+		long ref;
+		memset(sp, 0, sizeof sp);
+		*(u16 *)(sp + 40) = 4;                  /* spCategory: catNetwork */
+		*(u16 *)(sp + 42) = 1;                  /* spCType: typeEtherNet */
+		sp[48] = 3;                             /* spTBMask: any driver, any hardware */
+		*(u32 *)(sp + 24) = 1;                  /* spParamData: disabled sResources too */
+		sp[49] = s; sp[50] = i;                 /* the next one after the last tried */
+		if (et_slotmgr(0x0C, sp)) return 0;     /* SGetTypeSRsrc */
+		if (sp[49] == s && sp[50] == i) return 0;
+		s = sp[49]; i = sp[50];
+		if ((ref = open_card(s, i)) != 0) {
+			*slot = s; *id = i;
+			return ref;
+		}
+		LOG("AInstall: the card in slot %d, sResource %d, would not open: the next", s, i);
+	}
+	return 0;
 }
 
 static void shutdown(void)
@@ -594,7 +608,7 @@ static long install(u32 pram, u8 port)
 	if (g.installed) return 0;
 	g.port = port;
 	if (!slot || !(g.refnum = (s16)open_card(slot, id))) {
-		if (!first_card(&slot, &id) || !(g.refnum = (s16)open_card(slot, id))) { LOG("AInstall: no Ethernet card"); return -1; }
+		if (!(g.refnum = (s16)open_first_card(&slot, &id))) { LOG("AInstall: no Ethernet card"); return -1; }
 	}
 	g.slot = slot; g.srsrc = id;
 	memset(pb, 0, sizeof pb);
