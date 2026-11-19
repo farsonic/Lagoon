@@ -284,7 +284,8 @@ Not working or not known yet:
   causes them (a register or memory the deferred-task thread disturbs) or the testbed's
   translator does (docs/08 items 42 and 44 in Aurora68 record F-line errors from other causes)
   is open. The next step is a session with the bridge running and idle against one without it,
-  diffing low memory and the trap tables as item 44 did.
+  diffing low memory and the trap tables as item 44 did. *19 November:* reproduced in minutes
+  with the 0.11 test kernel, with and without the bridge; see "Large folders" below.
 - One hang (run 10): the Chooser, with the same server's volume already mounted, stopped in a
   synchronous wait after its NBP lookups; directed lookups to the multinode (PConfirmName) were
   not answered then. They are now; the same steps on the next run (with the volume put away
@@ -305,6 +306,133 @@ Not working or not known yet:
   larger than 2 GB show as 2 GB (AFP 2.x counts in 32 bits); the desktop database is empty
   (generic icons for documents of applications the Mac does not have); the volume's dates and
   the "closed down" time are the Mac's clock's.
+
+### Large folders (19 November 2026)
+
+![The share's root, with folders of 500, 2,000 and 5,000 items](images/mac-bridge-large-root.png)
+
+**The report.** On the user's Pi 3B (System 7.1, the WiFi card) a guest SMB share mounted
+through the bridge and folders of 99 and 120 items opened, but "a folder with a lot of files"
+ended in a system error whose alert had no text and an unlabelled button (the System could not
+even read the alert's strings).
+
+**What was found.**
+- *The server's memory grew with the folder and with the session.* FPEnumerate kept the whole
+  listing of the folder being read: a name and a full `LnStat` (124 bytes, the 80-byte comment
+  included) per item, in an array doubled by `ln_realloc` and sorted by insertion. And every
+  item the client saw stayed in the ID table with its name until the server stopped. Measured
+  on the host (`t_afpsrv`, the counting allocator in `src/host/sys_posix.c`): a folder of 5,000
+  items left 1.15 MB in the server. The thread's pool is 768 KB, an SMB connection takes about
+  200 KB of it, so the pool ran out at about 1,500 items. Out of memory, the server answered
+  with errors (ASan on the host found no bad access), but listing a large folder also meant
+  seconds of work at deferred-task time (the insertion sort moved 128-byte entries, the
+  first-fit pool walked thousands of blocks for every name).
+- *Every item cost a lookup on the share.* Finder info is read from the item's `._` file; for
+  an item without one that is a failed SMB CREATE, and on Samba a failed lookup in a large
+  folder reads the folder (case-insensitive matching): on the host, 5,000 items took 7.4 s.
+- *Writing Finder info threw the listing away*, and the Finder writes the icon positions of a
+  window it opens between the pages it reads: each page listed the folder again.
+- *Offspring counts were listings.* Each folder in a window has its item count, which is a
+  listing of that folder, kept for 5 s; the Finder asks again about every ten seconds. A
+  window holding folders of 500, 2,000 and 5,000 items took 4.5 to 5.8 s per look.
+- *Slow calls came back to the client more than once.* The client sends its request again
+  while a call takes seconds; those copies were relayed to the server's socket only after the
+  answer, and .ATP sent the whole answer once for each (an FPEnumerate of 4.5 s reached the
+  client three times).
+- *64 KB directory answers did not come through.* In the testbed every listing of the large
+  folders with 64 KB QUERY_DIRECTORY answers ended in "smb: receive: timed out" and a new
+  connection, three times running; with 16 KB answers the listings came through (a timeout now
+  and then remains, below).
+- *Microseconds went backwards at deferred-task time*, by 3 to 43 ms between two readings in
+  the bridge's deferred task: a clock that steps back makes every `now - then > limit` test
+  true at once (an AppleShare session closed for silence, a wait ended as timed out). Riptide's
+  waits use the same clock.
+- An ATP response is up to eight datagrams, which .ATP writes in one go; Lagoon EtherTalk's
+  queue for this Mac's own nodes had seven usable slots and the multinode's ring eight, so the
+  eighth datagram of a full response (an FPRead of 4,608 bytes) was dropped and fetched again
+  after the client's retry time.
+
+**The fix.**
+- `src/core/afpsrv/afps_afp.c`: FPEnumerate reads through a window (`AfpsWin`,
+  `afps_int.h`): the folder's listing stays open and only the entries around the page being
+  read are kept, packed into 16 KB, in the share's own order (no sort); a page past the window
+  reads on, a page before it lists the folder again, a listing left open for 30 s is closed.
+  A first look at the listing notes, as bits of an 8,192-bit table, which items have a `._`
+  file; the others are not looked up. Finder info written by the server marks its bit and no
+  longer throws the window away. Offspring counts are kept for 30 s (and until the server
+  changes something). Out of memory, FPEnumerate says kFPMiscErr, or returns what fitted.
+- `src/core/afpsrv/afps_names.c`: the ID table lives in pages of 256 nodes (no large block is
+  ever moved in the pool), and keeps the names of the 1,024 most recently used files. Older
+  files are put away: one with a plain Mac name entirely (its slot is used again; the client
+  gets a new file number, which AFP 2 without file IDs allows), one shown mangled down to its
+  parent and the hash of its name, so that "start#ID" is found again (by listing the folder)
+  and keeps its ID, also when the folder is listed again. Folders, and files with an open
+  fork, stay.
+- `src/mac/bridge/lm_bridge.c`: the thread relays what came to the multinode whenever it
+  waits, in the middle of a call too; the ring has 16 slots. `src/mac/ethertalk/ethertalk.c`:
+  25 slots for this Mac's own nodes. `src/mac/sys_mac.c`: `ln_ms` never goes back.
+  `Makefile.mac`: SMB directory reads ask for 16 KB (`LN_SMB_DIR_BUF`, `smb_ops.c`).
+
+Memory now, measured on the host against the private Samba with the folders below
+(`ln_host_mem_*`): listing 5,000 items costs the server and the SMB connection about 210 KB
+while it runs (most of it the backend's two 64 KB directory buffers) and leaves 76 KB (the
+table's slots and 1,024 file names); 500 items take 18 ms, 2,000 90 ms, 5,000 0.3 s.
+
+**Tested.**
+- `make test` (t_afpsrv: 984 checks): folders of 500, 2,000 and 5,000 items with the user's
+  kinds of names ("Alice68-NativeCall-b92847d-interp-00000.log", Unicode, Mac Roman, plain), in
+  pages as the AppleShare client asks (100 items, 4,624 bytes): every item once, no Mac name
+  twice, the table under its limit, put-away mangled names found again under the same ID and
+  shown the same when the folder is listed again, Finder info written between two pages
+  showing on the later page.
+- The Mac, in Aurora68's testbed (0.11 test kernel, System 7.1, 16 MB, Lagoon's private Samba
+  through pinet): the share's root with folders of 500, 2,000 and 5,000 items opened in the
+  Finder (`images/mac-bridge-large-root.png`). Through the old build the same window took three
+  timed-out SMB connections; with 16 KB answers it came in one call of 5.4 s, which the 30 s
+  offspring cache now makes once in half a minute.
+- Not proved: opening and scrolling the 5,000-item folder itself in icon and list views, and
+  copying from it. Every testbed run with Lagoon installed ended in a Finder "bad F-Line
+  instruction" within one to three minutes of a window being opened, with or without the
+  bridge (below), before that step.
+
+**The F-line errors.** Reproduced in every run of this session: the Finder executes garbage
+(an illegal instruction or a CHK at $FD76xx, the same Finder code each time, then a PC sliding
+through zeroed memory). Findings:
+- Not the large-folder bug: it happens with the share's root holding four small items, and,
+  with Lagoon installed but no share put on the desktop at all, on opening the Mac's own disk
+  in the Finder (26 s after the window opened; `images/mac-fline-without-bridge.png`).
+- Not the bridge thread corrupting the stack it interrupts: a run that copied the 128 bytes
+  above the deferred task's stack pointer before switching to the thread and compared them
+  after found them unchanged every time, until the crash. The Deferred Task Manager does not
+  nest (the IIci ROM sets bit 6 of DTQueue's flags while it runs tasks, $4080A1F6), and a
+  counter for nesting stayed at 0.
+- The same System 7.1 image without Lagoon (no Lagoon, no Lagoon EtherTalk, Riptide with a
+  static address that reaches nobody) ran clean for 2.5 minutes with the disk's window open.
+- Which part of the installation sets it off (Lagoon EtherTalk with AppleTalk active on it,
+  the Lagoon application, or Riptide talking to the network with DHCP, which the clean image
+  did not) is not narrowed down yet; images for each alone are made and waiting for the
+  testbed. The earlier sessions (18 November, the 0.10 kernel) opened Finder windows through
+  the bridge for minutes before such an error, so the kernel may play a part too.
+So the large-folder crash the user saw and these F-line errors are separate questions: the
+large-folder work above removes the memory, time and duplicate-answer problems a large folder
+caused, and the F-line errors need the testbed to tell which part of the Lagoon installation,
+or the kernel under it, sets them off.
+
+**Remaining limits.** File names: the newest 1,024 files are remembered; a mangled name put
+away costs 20 bytes for the rest of the session (so about 50,000 such names fit in 1 MB). A
+folder's items come in the share's order, and a listing that has to start again (the client
+going back past the window) reads the folder from the start. Folders are never forgotten. AFP
+2's StartIndex is 16 bits: a folder past 65,535 items shows the first 65,535. An offspring
+count may be up to 30 s old when something else changes the share. The first look for `._`
+files is one more listing of the folder each time it is listed from the start.
+
+**If the crash persists, send:** the number of items in the folder (and whether it holds many
+folders), Lagoon's version, the size Lagoon's Get Info gives it, About This Macintosh (the
+memory and the largest unused block), the exact alert (its ID, if MacsBug or a bomb number
+shows one), and PiLog's kernel log from Put on Desktop to the crash with "Kernel" ticked (the
+lines "afpsrv: enumerate ...", "smb: ..." and "[PSMAC:EXC] ... PC ..."). Whether the Finder
+also crashes opening a large folder on the Mac's own disk with Lagoon running but nothing put
+on the desktop would tell the two causes apart.
 
 ### Installing
 
