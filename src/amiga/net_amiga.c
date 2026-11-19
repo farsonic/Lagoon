@@ -254,8 +254,10 @@ int ln_udp_open(u16 port, const LnAddr *grp, LnSock **out)
 	if (grp) {
 		struct ip_mreq m;
 		memcpy(&m.imr_multiaddr, grp->a, 4);
+		UBYTE ttl = 255;
 		m.imr_interface.s_addr = INADDR_ANY;
 		setsockopt(fd, IPPROTO_IP, IP_ADD_MEMBERSHIP, &m, sizeof(m));
+		setsockopt(fd, IPPROTO_IP, IP_MULTICAST_TTL, &ttl, sizeof(ttl));   /* RFC 6762 11 */
 	}
 	*out = ln_alloc(sizeof(LnSock));
 	if (!*out) { CloseSocket(fd); return LN_ENOMEM; }
@@ -347,4 +349,104 @@ int ln_tcp_connect_reserved(const char *host, u16 port, int timeout_ms, LnSock *
 		}
 	}
 	return last;
+}
+
+/* ---- server side ---- */
+int ln_tcp_listen(u16 port, LnSock **out)
+{
+	struct sockaddr_in sa;
+	LONG fd, one = 1;
+	if (!SocketBase) return LN_ENONET;
+	fd = socket(AF_INET, SOCK_STREAM, 0);
+	if (fd < 0) return map_errno(Errno());
+	setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one));
+	memset(&sa, 0, sizeof(sa));
+	sa.sin_len = sizeof(sa);
+	sa.sin_family = AF_INET;
+	sa.sin_port = port;
+	if (bind(fd, (struct sockaddr *)&sa, sizeof(sa)) < 0 || listen(fd, 5) < 0) {
+		LONG e = Errno();
+		CloseSocket(fd);
+		return e == 48 ? LN_EINUSE : e == 13 ? LN_EACCES : map_errno(e);
+	}
+	*out = ln_alloc(sizeof(LnSock));
+	if (!*out) { CloseSocket(fd); return LN_ENOMEM; }
+	(*out)->fd = fd;
+	return LN_OK;
+}
+
+int ln_tcp_accept(LnSock *l, LnSock **out, LnAddr *peer)
+{
+	struct sockaddr_in sa;
+	LONG len = sizeof(sa), fd, one = 1;
+	fd = accept(l->fd, (struct sockaddr *)&sa, &len);
+	if (fd < 0) return map_errno(Errno());
+	setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
+	if (peer) {
+		memset(peer, 0, sizeof(*peer));
+		peer->family = 4;
+		memcpy(peer->a, &sa.sin_addr, 4);
+		peer->port = sa.sin_port;
+	}
+	*out = ln_alloc(sizeof(LnSock));
+	if (!*out) { CloseSocket(fd); return LN_ENOMEM; }
+	(*out)->fd = fd;
+	return LN_OK;
+}
+
+int ln_net_poll(LnSock *const *s, int n, u8 *ready, int timeout_ms)
+{
+	fd_set fs;
+	struct timeval tv;
+	ULONG sigs = SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_F;
+	LONG r, maxfd = -1;
+	int i, k = 0;
+	FD_ZERO(&fs);
+	for (i = 0; i < n; i++) {
+		ready[i] = 0;
+		if (s[i]) {
+			FD_SET(s[i]->fd, &fs);
+			if (s[i]->fd > maxfd) maxfd = s[i]->fd;
+		}
+	}
+	tv.tv_sec = timeout_ms / 1000;
+	tv.tv_usec = (timeout_ms % 1000) * 1000;
+	r = WaitSelect(maxfd + 1, &fs, NULL, NULL, (void *)&tv, &sigs);
+	if (sigs & (SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_F))
+		SetSignal(sigs, sigs & (SIGBREAKF_CTRL_C | SIGBREAKF_CTRL_F));   /* leave them for the caller */
+	if (r < 0) return map_errno(Errno());
+	if (r == 0) return (sigs & SIGBREAKF_CTRL_C) ? LN_EBREAK : 0;
+	for (i = 0; i < n; i++)
+		if (s[i] && FD_ISSET(s[i]->fd, &fs)) { ready[i] = 1; k++; }
+	return k;
+}
+
+int ln_local_addr(LnAddr *out)
+{
+	struct sockaddr_in sa;
+	LONG len = sizeof(sa), fd;
+	ULONG id;
+	memset(out, 0, sizeof(*out));
+	out->family = 4;
+	if (!SocketBase) return LN_ENONET;
+	/* the address the stack would use for the mDNS group, then gethostid() */
+	fd = socket(AF_INET, SOCK_DGRAM, 0);
+	if (fd >= 0) {
+		memset(&sa, 0, sizeof(sa));
+		sa.sin_len = sizeof(sa);
+		sa.sin_family = AF_INET;
+		sa.sin_port = 5353;
+		sa.sin_addr.s_addr = 0xe00000fbUL;
+		if (connect(fd, (struct sockaddr *)&sa, sizeof(sa)) == 0 &&
+		    getsockname(fd, (struct sockaddr *)&sa, &len) == 0 && sa.sin_addr.s_addr != 0) {
+			memcpy(out->a, &sa.sin_addr, 4);
+			CloseSocket(fd);
+			return LN_OK;
+		}
+		CloseSocket(fd);
+	}
+	id = (ULONG)gethostid();
+	if (id == 0 || id == 0xffffffffUL) return LN_ENOHOST;
+	out->a[0] = (u8)(id >> 24); out->a[1] = (u8)(id >> 16); out->a[2] = (u8)(id >> 8); out->a[3] = (u8)id;
+	return LN_OK;
 }

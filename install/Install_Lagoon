@@ -1,4 +1,4 @@
-; $VER: Install_Lagoon 0.1 (30.10.2026)
+; $VER: Install_Lagoon 0.2 (19.11.2026)
 ;
 ; Installer script for Lagoon, network file systems (SMB, AFP, NFS) for
 ; AmigaOS 3.x (68020+). Written for the Commodore/Amiga Technologies
@@ -13,12 +13,15 @@
 ;   * creates ENVARC:Lagoon/ (an existing lagoon.conf is kept) and ENV:Lagoon/,
 ;   * adds "Lagoon MOUNTALL WAIT 30 >NIL:" to S:User-Startup in a
 ;     ";BEGIN Lagoon" block (appended, so after the TCP/IP stack's block),
+;     and "Run >NIL: Lagoon SERVE AUTO WAIT 30", which starts the file
+;     server for shared Amiga folders when LagoonPrefs' Sharing window has
+;     "Start at boot" ticked (and does nothing otherwise),
 ;   * can uninstall Lagoon again (locations kept in ENVARC:Lagoon/BinDir,
 ;     DocDir, PrefsDir).
 ;
 ; SPDX-License-Identifier: GPL-2.0-only
 
-(set #version "0.1")
+(set #version "0.2")
 (if (= @app-name "") (set @app-name "Lagoon"))
 
 ; ---------------------------------------------------------------------------
@@ -403,12 +406,27 @@
                  "is added at the end, after your TCP/IP stack's own block; "
                  "WAIT 30 gives the stack up to 30 seconds to come up."))
       (default 1))))
-(if #boot
+(set #serve 1)
+(if (> @user-level 0)
+  (set #serve
+    (askbool
+      (prompt (cat "Start the file server at boot when you share Amiga folders?\n\n"
+                   "(It only starts when \"Start at boot\" is ticked in "
+                   "LagoonPrefs' Sharing window.)"))
+      (help (cat "Adds \"Run >NIL: " #lg-cmd " SERVE AUTO WAIT 30\" to the same block "
+                 "of S:User-Startup. AUTO: the server starts only when sharing is "
+                 "switched on (Start at boot) and folders are shared; without that "
+                 "the line does nothing. Lagoon SERVE STOP stops a running server."))
+      (default 1))))
+(set #lines "")
+(if #boot (set #lines (cat #lg-cmd " MOUNTALL WAIT 30 >NIL:\n")))
+(if #serve (set #lines (cat #lines "Run >NIL: " #lg-cmd " SERVE AUTO WAIT 30\n")))
+(if (<> #lines "")
   (startup "Lagoon"
-    (prompt (cat "Add this line to S:User-Startup so your shares are mounted at boot:\n\n"
-                 #lg-cmd " MOUNTALL WAIT 30 >NIL:"))
+    (prompt (cat "Add these lines to S:User-Startup (shares mounted at boot, "
+                 "and the file server when sharing is on):\n\n" #lines))
     (help @startup-help)
-    (command (cat #lg-cmd " MOUNTALL WAIT 30 >NIL:\n"))))
+    (command #lines)))
 (complete 100)
 
 ; ---- done -----------------------------------------------------------------
@@ -422,5 +440,7 @@
        "Share list: " #conf-arc "\n"
        (if (IN #opts 0) (cat "Manual: " (tackon #docdir "README.md") "\n") "")
        (if #boot "Shares marked \"Mount at startup\" are mounted at boot.\n" "")
+       "\nShare this Amiga's folders: LagoonPrefs, Sharing..., or "
+       "Lagoon SHARE and Lagoon SERVE in a Shell.\n"
        (if (= #stack "") "\nNo TCP/IP stack was found: install one first.\n"
            (cat "\nTCP/IP stack: " #stack "\n"))))

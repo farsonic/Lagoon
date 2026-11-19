@@ -93,6 +93,17 @@ typedef struct LnStatus {
 typedef void (*ln_mount_cb)(void *ud, const char *device, const LnMountInfo *info);
 
 int ln_amiga_load_conf(LnConf *c);
+/* write c to ENV:Lagoon/lagoon.conf, and to ENVARC: too when envarc (the
+ * old ENVARC: file becomes lagoon.conf.bak); creates the drawers */
+int ln_amiga_save_conf(const LnConf *c, int envarc);
+
+/* the SMB server (Lagoon SERVE) runs as a task of this name */
+#define LN_SERVER_TASK "Lagoon server"
+int  ln_amiga_server_running(void);
+/* send it SIGBREAKF_CTRL_C (stop) or _CTRL_F (reload lagoon.conf); 0 = not running */
+int  ln_amiga_server_signal(unsigned long sig);
+/* start "Run >NIL: Lagoon SERVE" in the background; LN_OK or LN_EIO */
+int  ln_amiga_server_start(void);
 int ln_amiga_mount(const LnShare *share, const char *device, char *devout, size_t devn, char *err, size_t errn);
 int ln_amiga_unmount(const char *device, char *err, size_t errn);
 int ln_amiga_find_mount(const char *share_name, char *dev, size_t devn);

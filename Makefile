@@ -43,7 +43,7 @@ ACFLAGS := -c99 -O2 -dontwarn=153 -cpu=68020 -I$(NDK) -I$(NETINC) -Isrc/core -Is
 # 68020 assembly for the AES rounds, GHASH and SHA-256 (src/core/crypto/*.s,
 # Amiga only; LN_CRYPTO_ASM drops the C versions from aes.c, gcm.c, hash.c)
 CORE_ASM := $(wildcard src/core/*/*.s)
-AOBJ    := $(patsubst src/%.c,build/amiga/obj/%.o,$(CORE_SRC) src/amiga/sys_amiga.c src/amiga/net_amiga.c src/amiga/mount.c) \
+AOBJ    := $(patsubst src/%.c,build/amiga/obj/%.o,$(CORE_SRC) src/amiga/sys_amiga.c src/amiga/net_amiga.c src/amiga/mount.c src/amiga/fs_dos.c) \
            $(patsubst src/%.s,build/amiga/obj/%.o,$(CORE_ASM))
 HANDLER_SRC := $(wildcard src/amiga/handler/*.c)
 CMD_SRC     := $(wildcard src/amiga/cmd/*.c)

@@ -10,6 +10,10 @@
  *   Lagoon STATUS [device]
  *   Lagoon SHARES <URL> [USER u] [PASSWORD p] [DOMAIN d]
  *   Lagoon TEST <name|URL> [USER u] [PASSWORD p] [DOMAIN d]
+ *   Lagoon SHARE [<name> PATH <folder>] [READONLY|READWRITE] [GUEST|NOGUEST]
+ *                [USERS "a b"] [COMMENT c] [DELETE]
+ *   Lagoon USER [<name> PASSWORD p] [DELETE]
+ *   Lagoon SERVE [STOP|RELOAD|AUTO] [WAIT seconds] [LOG file] [PORT n] [AS name] [DOMAIN group]
  *   Lagoon HELP
  *
  * Return codes: 0 ok, 5 (WARN) some shares of MOUNTALL failed, 10 (ERROR)
@@ -29,11 +33,11 @@
 #include "ln_conf.h"
 #include "mount.h"
 #include "ln_mdns.h"
+#include "cmd.h"
 
-static const char version[] = "$VER: Lagoon 0.1 (30.10.2026)";
+static const char version[] = "$VER: Lagoon 0.2 (19.11.2026)";
 
-#define TEMPLATE "COMMAND/A,NAME,AS/K,USER/K,PASSWORD/K,DOMAIN/K,READONLY/S,VOLUME/K,WAIT/K/N"
-enum { A_CMD, A_NAME, A_AS, A_USER, A_PASS, A_DOMAIN, A_RO, A_VOLUME, A_WAIT, A_COUNT };
+size_t __stack = 32768;          /* vbcc start-up: the backends and the server need room */
 
 static const char help[] =
 	"Lagoon - network shares (SMB, AFP, NFS) as AmigaDOS volumes\n"
@@ -48,11 +52,21 @@ static const char help[] =
 	"                               retries until the network is up\n"
 	"  Lagoon STATUS [device]       mounted shares, server, traffic\n"
 	"  Lagoon SHARES <URL>          list the shares a server offers\n"
-	"  Lagoon TEST <name|URL>       connect, log on and read the root, no mount\n";
+	"  Lagoon TEST <name|URL>       connect, log on and read the root, no mount\n"
+	"\n"
+	"Sharing Amiga folders with Windows, macOS and Linux (SMB):\n"
+	"  Lagoon SHARE                 shared folders, users and the server's state\n"
+	"  Lagoon SHARE <name> PATH <folder> [READONLY] [GUEST] [USERS \"a b\"]\n"
+	"                               share a folder (GUEST: no password needed)\n"
+	"  Lagoon SHARE <name> DELETE   stop sharing it\n"
+	"  Lagoon USER <name> PASSWORD <p>   add a user or set the password\n"
+	"  Lagoon USER <name> DELETE    remove a user\n"
+	"  Lagoon SERVE [WAIT secs] [LOG file] [AS name]   run the server (Ctrl-C stops)\n"
+	"  Lagoon SERVE STOP            stop the running server\n";
 
 int ln_vsnprintf(char *buf, size_t n, const char *fmt, va_list ap);
 
-static void out(const char *fmt, ...)
+void lagoon_out(const char *fmt, ...)
 {
 	char b[512];
 	va_list ap;
@@ -61,6 +75,7 @@ static void out(const char *fmt, ...)
 	va_end(ap);
 	PutStr((STRPTR)b);
 }
+#define out lagoon_out
 
 static void size_str(u64 v, char *b, size_t n)
 {
@@ -474,7 +489,23 @@ int main(void)
 	(void)version;
 	ln_mdns_resolve_hook = ln_mdns_resolve;    /* nas.local without a DNS server */
 	memset(args, 0, sizeof(args));
-	rd = ReadArgs((STRPTR)TEMPLATE, args, NULL);
+	{
+		/* "Lagoon USER bob PASSWORD x": USER is also MOUNT's USER/K keyword,
+		 * so USER lines get their own template */
+		const char *a = (const char *)GetArgStr();
+		while (a && (*a == ' ' || *a == '\t'))
+			a++;
+		if (a && !ln_strncasecmp(a, "USER", 4) && (a[4] == ' ' || a[4] == '\t' || a[4] == '\n' || !a[4])) {
+			LONG ua[4];
+			memset(ua, 0, sizeof(ua));
+			rd = ReadArgs((STRPTR)"COMMAND/A,NAME,PASSWORD/K,DELETE/S", ua, NULL);
+			args[A_CMD] = ua[0];
+			args[A_NAME] = ua[1];
+			args[A_PASS] = ua[2];
+			args[A_DELETE] = ua[3];
+		} else
+			rd = ReadArgs((STRPTR)TEMPLATE, args, NULL);
+	}
 	if (!rd) {
 		PrintFault(IoErr(), (STRPTR)"Lagoon");
 		PutStr((STRPTR)help);
@@ -504,6 +535,12 @@ int main(void)
 		rc = cmd_shares(args);
 	else if (!ln_strcasecmp(cmd, "TEST"))
 		rc = cmd_test(c, args);
+	else if (!ln_strcasecmp(cmd, "SERVE"))
+		rc = cmd_serve(c, args);
+	else if (!ln_strcasecmp(cmd, "SHARE"))
+		rc = cmd_share(c, args);
+	else if (!ln_strcasecmp(cmd, "USER"))
+		rc = cmd_user(c, args);
 	else if (!ln_strcasecmp(cmd, "HELP")) {
 		PutStr((STRPTR)help);
 		rc = RETURN_OK;

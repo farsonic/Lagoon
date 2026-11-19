@@ -3,7 +3,7 @@
 #
 #   tools/mkpackage.sh [BUILDDIR [OUTDIR [VERSION]]]
 #
-# Defaults: build/amiga, build, 0.1. Builds OUTDIR/package/Lagoon/ (+ .info):
+# Defaults: build/amiga, build, 0.2. Builds OUTDIR/package/Lagoon/ (+ .info):
 #
 #   Install_Lagoon(.info)    Installer script and its icon
 #   ReadMe(.info)            short instructions
@@ -31,7 +31,7 @@ set -eu
 top=$(cd "$(dirname "$0")/.." && pwd)
 BUILD=${1:-$top/build/amiga}
 OUT=${2:-$top/build}
-VERSION=${3:-0.1}
+VERSION=${3:-0.2}
 PYTHON=${PYTHON:-python3}
 mkicon="$PYTHON $top/tools/mkicon.py"
 trash=$OUT/.trash

@@ -8,6 +8,8 @@
 #include <dos/dos.h>
 #include <dos/dosextens.h>
 #include <dos/filehandler.h>
+#include <dos/dostags.h>
+#include <utility/tagitem.h>
 #include <proto/exec.h>
 #include <proto/dos.h>
 #include "mount.h"
@@ -48,6 +50,102 @@ int ln_amiga_load_conf(LnConf *c)
 		return r;
 	}
 	return LN_OK;
+}
+
+/* path = "VOL:Dir/file": create VOL:Dir when missing */
+static void conf_dir(const char *path)
+{
+	char dir[64];
+	const char *slash = strrchr(path, '/');
+	BPTR l;
+	if (!slash || (size_t)(slash - path) >= sizeof(dir))
+		return;
+	memcpy(dir, path, (size_t)(slash - path));
+	dir[slash - path] = 0;
+	l = Lock((STRPTR)dir, ACCESS_READ);
+	if (!l)
+		l = CreateDir((STRPTR)dir);
+	if (l)
+		UnLock(l);
+}
+
+static int conf_write(const char *path, const char *text, LONG len, int backup)
+{
+	BPTR f;
+	LONG n;
+	conf_dir(path);
+	if (backup) {
+		char bak[64];
+		BPTR l = Lock((STRPTR)path, ACCESS_READ);
+		if (l) {
+			UnLock(l);
+			ln_snprintf(bak, sizeof(bak), "%s.bak", path);
+			DeleteFile((STRPTR)bak);
+			Rename((STRPTR)path, (STRPTR)bak);
+		}
+	}
+	f = Open((STRPTR)path, MODE_NEWFILE);
+	if (!f)
+		return LN_EIO;
+	n = len ? Write(f, (APTR)text, len) : 0;
+	Close(f);
+	return n == len ? LN_OK : LN_EIO;
+}
+
+int ln_amiga_save_conf(const LnConf *c, int envarc)
+{
+	char *buf = ln_alloc(64 * 1024);
+	int len, r = LN_OK;
+	if (!buf)
+		return LN_ENOMEM;
+	len = ln_conf_format(c, buf, 64 * 1024);
+	if (len < 0)
+		r = LN_ENOSPC;
+	if (r == LN_OK && envarc)
+		r = conf_write("ENVARC:Lagoon/lagoon.conf", buf, len, 1);
+	if (r == LN_OK)
+		r = conf_write("ENV:Lagoon/lagoon.conf", buf, len, 0);
+	ln_wipe(buf, 64 * 1024);
+	ln_free(buf);
+	return r;
+}
+
+int ln_amiga_server_running(void)
+{
+	int r;
+	Forbid();
+	r = FindTask((STRPTR)LN_SERVER_TASK) != NULL;
+	Permit();
+	return r;
+}
+
+int ln_amiga_server_signal(unsigned long sig)
+{
+	struct Task *t;
+	Forbid();
+	t = FindTask((STRPTR)LN_SERVER_TASK);
+	if (t)
+		Signal(t, (ULONG)sig);
+	Permit();
+	return t != NULL;
+}
+
+int ln_amiga_server_start(void)
+{
+	BPTR nil = Open((STRPTR)"NIL:", MODE_NEWFILE);
+	struct TagItem t[3];
+	LONG r;
+	if (!nil)
+		return LN_EIO;
+	t[0].ti_Tag = SYS_Input;
+	t[0].ti_Data = (ULONG)nil;
+	t[1].ti_Tag = SYS_Output;
+	t[1].ti_Data = 0;
+	t[2].ti_Tag = TAG_DONE;
+	/* Run detaches the server; System() returns at once */
+	r = SystemTagList((STRPTR)"Run >NIL: Lagoon SERVE", t);
+	Close(nil);
+	return r == 0 ? LN_OK : LN_EIO;
 }
 
 static void err_set(char *err, size_t n, const char *fmt, const char *a, const char *b)
