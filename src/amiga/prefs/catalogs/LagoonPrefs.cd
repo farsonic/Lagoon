@@ -271,3 +271,133 @@ No TCP/IP stack is running (bsdsocket.library).
 ;
 MSG_FIRST_SERVER (//)
 Enter the server first.
+;
+; ---- Sharing window (the SMB server: sharing.c) ----
+MSG_SHARING (//)
+S_haring...
+;
+MSG_SHARING_TITLE (//)
+Sharing this Amiga's folders
+;
+MSG_SRV_NAME (//)
+Computer _name
+;
+MSG_SRV_GROUP (//)
+_Workgroup
+;
+MSG_HDR_SHARE (//)
+Share
+;
+MSG_HDR_FOLDER (//)
+Folder
+;
+MSG_HDR_ACCESS (//)
+Access
+;
+MSG_ACC_RO (//)
+read-only
+;
+MSG_ACC_RW (//)
+read/write
+;
+MSG_ACC_GUEST (//)
+guests
+;
+MSG_USERS_BTN (//)
+U_sers...
+;
+MSG_AUTOSTART (//)
+Start at _boot
+;
+MSG_SRV_RUNNING (//)
+The server is running.
+;
+MSG_SRV_STOPPED (//)
+The server is not running.
+;
+MSG_SRV_START (//)
+S_tart server
+;
+MSG_SRV_STOP (//)
+S_top server
+;
+MSG_SH_EMPTY (//)
+No shared folders yet: use Add.
+;
+MSG_SH_NEW_TITLE (//)
+Share a folder
+;
+MSG_SH_EDIT_TITLE (//)
+Shared folder
+;
+MSG_SH_NAME (//)
+Share _name
+;
+MSG_SH_PATH (//)
+_Folder
+;
+MSG_CHOOSE (//)
+C_hoose...
+;
+MSG_SH_COMMENT (//)
+Co_mment
+;
+MSG_SH_USERS (//)
+_Users (empty = all)
+;
+MSG_SH_GUEST (//)
+Allow _guests (no password)
+;
+MSG_ASL_FOLDER (//)
+Choose the folder to share
+;
+MSG_USERS_TITLE (//)
+Users who may connect
+;
+MSG_USR_PASSWORD (//)
+Set _password...
+;
+MSG_USR_NEW_TITLE (//)
+New user
+;
+MSG_USR_PW_TITLE (//)
+Password for %s
+;
+MSG_PW_REPEAT (//)
+Con_firm
+;
+MSG_BAD_SHNAME (//)
+A share name has 1 to 31 characters, none of : / * ? < > | [ ] ; = , +
+;
+MSG_DUP_SHARE (//)
+There is already a share called %s.
+;
+MSG_BAD_FOLDER (//)
+%s is not a folder.
+;
+MSG_BAD_USERNAME (//)
+A user name cannot be empty or contain spaces, @ or quotes.
+;
+MSG_DUP_USER (//)
+There is already a user called %s.
+;
+MSG_PW_EMPTY (//)
+Please enter a password.
+;
+MSG_PW_MISMATCH (//)
+The two passwords are not the same.
+;
+MSG_NOBODY (//)
+Nobody can use %s yet:\nallow guests, or add a user with Users...
+;
+MSG_SRV_START_FAIL (//)
+The server did not start: %s
+;
+MSG_ASK_UNSHARE (//)
+Stop sharing %s?
+;
+MSG_ASK_DELUSER (//)
+Remove the user %s?
+;
+MSG_ERR_FULL2 (//)
+There is no room for more.

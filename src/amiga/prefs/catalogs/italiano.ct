@@ -1,4 +1,4 @@
-## version $VER: LagoonPrefs.catalog 0.1 (30.10.2026)
+## version $VER: LagoonPrefs.catalog 0.2 (19.11.2026)
 ## language italiano
 ## codeset 0
 ; Lagoon - LagoonPrefs, italiano translation (UTF-8 here, ISO-8859-1 in the catalog)
@@ -356,3 +356,175 @@ MSG_FIRST_SERVER
 Inserisci prima il server.
 ; Enter the server first.
 ;
+;
+MSG_SHARING
+Con_divisione...
+; S_haring...
+;
+MSG_SHARING_TITLE
+Condividere le cartelle di questo Amiga
+; Sharing this Amiga's folders
+;
+MSG_SRV_NAME
+_Nome del computer
+; Computer _name
+;
+MSG_SRV_GROUP
+_Gruppo di lavoro
+; _Workgroup
+;
+MSG_HDR_SHARE
+Condivisione
+; Share
+;
+MSG_HDR_FOLDER
+Cartella
+; Folder
+;
+MSG_HDR_ACCESS
+Accesso
+; Access
+;
+MSG_ACC_RO
+sola lettura
+; read-only
+;
+MSG_ACC_RW
+lettura/scrittura
+; read/write
+;
+MSG_ACC_GUEST
+ospiti
+; guests
+;
+MSG_USERS_BTN
+_Utenti...
+; U_sers...
+;
+MSG_AUTOSTART
+Avvia all'a_ccensione
+; Start at _boot
+;
+MSG_SRV_RUNNING
+Il server è in funzione.
+; The server is running.
+;
+MSG_SRV_STOPPED
+Il server non è in funzione.
+; The server is not running.
+;
+MSG_SRV_START
+A_vvia il server
+; S_tart server
+;
+MSG_SRV_STOP
+Ferma il ser_ver
+; S_top server
+;
+MSG_SH_EMPTY
+Nessuna cartella condivisa: usare Aggiungi.
+; No shared folders yet: use Add.
+;
+MSG_SH_NEW_TITLE
+Condividi una cartella
+; Share a folder
+;
+MSG_SH_EDIT_TITLE
+Cartella condivisa
+; Shared folder
+;
+MSG_SH_NAME
+_Nome condivisione
+; Share _name
+;
+MSG_SH_PATH
+Ca_rtella
+; _Folder
+;
+MSG_CHOOSE
+Sc_egli...
+; C_hoose...
+;
+MSG_SH_COMMENT
+Co_mmento
+; Co_mment
+;
+MSG_SH_USERS
+_Utenti (vuoto = tutti)
+; _Users (empty = all)
+;
+MSG_SH_GUEST
+Consenti gli os_piti (senza password)
+; Allow _guests (no password)
+;
+MSG_ASL_FOLDER
+Scegli la cartella da condividere
+; Choose the folder to share
+;
+MSG_USERS_TITLE
+Utenti che possono connettersi
+; Users who may connect
+;
+MSG_USR_PASSWORD
+_Imposta password...
+; Set _password...
+;
+MSG_USR_NEW_TITLE
+Nuovo utente
+; New user
+;
+MSG_USR_PW_TITLE
+Password di %s
+; Password for %s
+;
+MSG_PW_REPEAT
+Con_ferma
+; Con_firm
+;
+MSG_BAD_SHNAME
+Un nome di condivisione ha da 1 a 31 caratteri, senza : / * ? < > | [ ] ; = , +
+; A share name has 1 to 31 characters, none of : / * ? < > | [ ] ; = , +
+;
+MSG_DUP_SHARE
+Esiste già una condivisione di nome %s.
+; There is already a share called %s.
+;
+MSG_BAD_FOLDER
+%s non è una cartella.
+; %s is not a folder.
+;
+MSG_BAD_USERNAME
+Un nome utente non può essere vuoto né contenere spazi, @ o virgolette.
+; A user name cannot be empty or contain spaces, @ or quotes.
+;
+MSG_DUP_USER
+Esiste già un utente di nome %s.
+; There is already a user called %s.
+;
+MSG_PW_EMPTY
+Inserire una password.
+; Please enter a password.
+;
+MSG_PW_MISMATCH
+Le due password non coincidono.
+; The two passwords are not the same.
+;
+MSG_NOBODY
+Nessuno può ancora usare %s:\nconsentire gli ospiti o aggiungere un utente (Utenti...).
+; Nobody can use %s yet:\nallow guests, or add a user with Users...
+;
+MSG_SRV_START_FAIL
+Il server non si è avviato: %s
+; The server did not start: %s
+;
+MSG_ASK_UNSHARE
+Non condividere più %s?
+; Stop sharing %s?
+;
+MSG_ASK_DELUSER
+Rimuovere l'utente %s?
+; Remove the user %s?
+;
+MSG_ERR_FULL2
+Non c'è più spazio.
+; There is no room for more.

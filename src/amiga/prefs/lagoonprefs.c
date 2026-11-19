@@ -23,7 +23,7 @@
 #include "ln_mdns.h"
 #include "mount.h"
 
-const char lagoonprefs_version[] = "$VER: LagoonPrefs " LP_VERSION " (30.10.2026)";
+const char lagoonprefs_version[] = "$VER: LagoonPrefs " LP_VERSION " (19.11.2026)";
 size_t __stack = 32768;          /* vbcc start-up: the backends' Test needs room */
 
 
@@ -38,9 +38,9 @@ static LpList slist;
 static char info[160];
 static ULONG last_secs, last_micros;
 
-enum { G_LIST = 1, G_ADD, G_EDIT, G_REMOVE, G_MOUNT, G_BROWSE, G_SAVE, G_USE, G_CANCEL, G_INFO, G_HDR = LP_ID_FIXED };
-#define NBTN 8
-static const int btn_ids[NBTN] = { G_ADD, G_EDIT, G_REMOVE, G_MOUNT, G_BROWSE, G_SAVE, G_USE, G_CANCEL };
+enum { G_LIST = 1, G_ADD, G_EDIT, G_REMOVE, G_MOUNT, G_BROWSE, G_SAVE, G_USE, G_CANCEL, G_INFO, G_SHARING, G_HDR = LP_ID_FIXED };
+#define NBTN 9
+static const int btn_ids[NBTN] = { G_ADD, G_EDIT, G_REMOVE, G_MOUNT, G_BROWSE, G_SAVE, G_USE, G_CANCEL, G_SHARING };
 static char btn_keys[NBTN];
 
 /* layout */
@@ -278,6 +278,7 @@ static const char *btn_label(int id)
 	case G_BROWSE: return S(MSG_BROWSE);
 	case G_SAVE: return S(MSG_SAVE);
 	case G_USE: return S(MSG_USE);
+	case G_SHARING: return S(MSG_SHARING);
 	}
 	return S(MSG_CANCEL);
 }
@@ -349,7 +350,14 @@ static int build(void)
 	t[1].ti_Tag = GTTX_Border;
 	t[1].ti_Data = TRUE;
 	t[2].ti_Tag = TAG_DONE;
-	g = g_info = lp_mk(TEXT_KIND, g, G_INFO, NULL, 0, x0, info_y, inner_w - 16, lp_rowh, t);
+	/* the info line, and Sharing... at its right */
+	bw = lp_textw(S(MSG_SHARING)) + 2 * lp_cw;
+	g = g_info = lp_mk(TEXT_KIND, g, G_INFO, NULL, 0, x0, info_y, inner_w - 16 - bw - 6, lp_rowh, t);
+	t[0].ti_Tag = GT_Underscore;
+	t[0].ti_Data = '_';
+	t[1].ti_Tag = TAG_DONE;
+	g = lp_mk(BUTTON_KIND, g, G_SHARING, S(MSG_SHARING), PLACETEXT_IN, x0 + inner_w - 16 - bw, info_y, bw, lp_rowh, t);
+	btn_keys[8] = lp_key(S(MSG_SHARING));
 
 	/* row 1, spread over the width */
 	tw = 0;
@@ -507,6 +515,12 @@ static void edit(int index)
 	build();
 }
 
+static void sharing(void)
+{
+	lp_sharing(lp_main);             /* blocks the main window itself */
+	build();
+}
+
 static void browse(void)
 {
 	LnShare s;
@@ -556,7 +570,10 @@ static int finish(int id)
 {
 	if (id == G_CANCEL)
 		return 1;
-	return store(id == G_SAVE) == 0;
+	if (store(id == G_SAVE) != 0)
+		return 0;
+	ln_amiga_server_signal(SIGBREAKF_CTRL_F);     /* a running server takes the new shared folders */
+	return 1;
 }
 
 static int menu_pick(UWORD code)
@@ -608,6 +625,7 @@ static int do_button(int id)
 	case G_REMOVE: remove_share(); break;
 	case G_MOUNT: mount_toggle(); break;
 	case G_BROWSE: if (lp_conf.nshares < LN_CONF_MAX_SHARES) browse(); break;
+	case G_SHARING: sharing(); break;
 	case G_SAVE: case G_USE: case G_CANCEL: return finish(id);
 	}
 	return 0;
@@ -705,6 +723,12 @@ static int run_gui(const char *pubscreen)
 	maxh = lp_scr->Height - lp_scr->BarHeight - 1 - lp_scr->WBorTop - lp_scr->Font->ta_YSize - 1 - lp_scr->WBorBottom;
 	lp_main_size(&w, &h);
 	lp_edit_size(&ew, &eh);
+	{
+		int sw, sh;
+		lp_sharing_size(&sw, &sh);
+		ew = LN_MAX(ew, sw);
+		eh = LN_MAX(eh, sh);
+	}
 	if (LN_MAX(w, ew) > maxw || LN_MAX(h, eh) > maxh)
 		lp_use_topaz();
 	if (lp_list_init(&slist, LN_CONF_MAX_SHARES) < 0) {

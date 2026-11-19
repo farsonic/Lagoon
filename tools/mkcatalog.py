@@ -124,6 +124,15 @@ KEYGROUPS = [
     "MSG_PROTOCOL MSG_SERVER MSG_LIST MSG_DEVICE MSG_VOLLABEL MSG_AUTOMOUNT MSG_READONLY MSG_UID MSG_GID "
     "MSG_TEST MSG_OK MSG_CANCEL",
     "MSG_USE MSG_AGAIN MSG_CANCEL",
+    # LagoonPrefs main window with the Sharing button
+    "MSG_ADD MSG_EDIT MSG_REMOVE MSG_MOUNT MSG_BROWSE MSG_SHARING MSG_SAVE MSG_USE MSG_CANCEL",
+    "MSG_ADD MSG_EDIT MSG_REMOVE MSG_UNMOUNT MSG_BROWSE MSG_SHARING MSG_SAVE MSG_USE MSG_CANCEL",
+    # Sharing window (sharing.c), its folder editor, users list and user editor
+    "MSG_SRV_NAME MSG_SRV_GROUP MSG_ADD MSG_EDIT MSG_REMOVE MSG_USERS_BTN MSG_AUTOSTART MSG_SRV_START MSG_OK MSG_CANCEL",
+    "MSG_SRV_NAME MSG_SRV_GROUP MSG_ADD MSG_EDIT MSG_REMOVE MSG_USERS_BTN MSG_AUTOSTART MSG_SRV_STOP MSG_OK MSG_CANCEL",
+    "MSG_SH_NAME MSG_SH_PATH MSG_CHOOSE MSG_SH_COMMENT MSG_SH_USERS MSG_SH_GUEST MSG_READONLY MSG_OK MSG_CANCEL",
+    "MSG_ADD MSG_USR_PASSWORD MSG_REMOVE MSG_OK",
+    "MSG_USER MSG_PASSWORD MSG_PW_REPEAT MSG_OK MSG_CANCEL",
     "MSG_SELECT MSG_CANCEL",
 ]
 
@@ -161,8 +170,17 @@ def check_layout(where, st):
     cbw = 26 + 8 + max(width8(g(n)) for n in ("MSG_AUTOMOUNT", "MSG_READONLY", "MSG_SIGN", "MSG_ENCRYPT",
                                                "MSG_CLEARTEXT"))
     ed_w = 8 + lw1 + fw1 + 16 + max(lw2 + 12 * 8, cbw) + 8
+    # Sharing window: the list or the button row with "Start at boot"
+    srow = sum(width8(g(n)) + 16 + 6 for n in ("MSG_ADD", "MSG_EDIT", "MSG_REMOVE", "MSG_USERS_BTN"))
+    srow += 26 + 8 + width8(g("MSG_AUTOSTART"))
+    sh_w = max(64 * 8 + 24, srow) + 16
+    sname = width8(g("MSG_SRV_NAME")) + 16 + 16 * 8 + 16 + width8(g("MSG_SRV_GROUP")) + 16 + 16 * 8
+    sh_w = max(sh_w, sname + 16)
+    fe_w = max(width8(g(n)) for n in ("MSG_SH_NAME", "MSG_SH_PATH", "MSG_SH_COMMENT", "MSG_SH_USERS")) + 16 + 34 * 8 + 16
+    fe_w = max(fe_w, width8(g("MSG_SH_NAME")) + 16 + 26 + 8 + width8(g("MSG_SH_GUEST")) + 16)
     bad = 0
-    for name, w in (("main window", main_w), ("share editor", ed_w)):
+    for name, w in (("main window", main_w), ("share editor", ed_w), ("sharing window", sh_w),
+                    ("shared folder editor", fe_w)):
         if w > 640 - 8:
             print("%s: %s is %d pixels wide with topaz 8 (at most 632)" % (where, name, w))
             bad += 1

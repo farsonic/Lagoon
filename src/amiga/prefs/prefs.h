@@ -30,7 +30,7 @@
 
 #define LP_ENV_CONF    "ENV:Lagoon/lagoon.conf"
 #define LP_ENVARC_CONF "ENVARC:Lagoon/lagoon.conf"
-#define LP_VERSION     "0.1"
+#define LP_VERSION     "0.2"
 
 /* ---- gui.c ---- */
 extern struct Screen *lp_scr;
@@ -102,5 +102,10 @@ void lp_edit_size(int *w, int *h);         /* inner size of the editor window */
 int lp_browse(struct Window *parent, LnShare *s);
 /* list shares on url's server with creds; pick one into out (1 = picked) */
 int lp_pick_share(struct Window *parent, const LnUrl *url, const LnCreds *cr, char *out, size_t n, int quiet);
+
+/* ---- sharing.c ---- */
+/* the Sharing window (shared folders, users, the SMB server); 1 = OK */
+int  lp_sharing(struct Window *parent);
+void lp_sharing_size(int *w, int *h);
 
 #endif
