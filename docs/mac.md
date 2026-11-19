@@ -406,17 +406,19 @@ through zeroed memory). Findings:
   after found them unchanged every time, until the crash. The Deferred Task Manager does not
   nest (the IIci ROM sets bit 6 of DTQueue's flags while it runs tasks, $4080A1F6), and a
   counter for nesting stayed at 0.
-- The same System 7.1 image without Lagoon (no Lagoon, no Lagoon EtherTalk, Riptide with a
-  static address that reaches nobody) ran clean for 2.5 minutes with the disk's window open.
-- Which part of the installation sets it off (Lagoon EtherTalk with AppleTalk active on it,
-  the Lagoon application, or Riptide talking to the network with DHCP, which the clean image
-  did not) is not narrowed down yet; images for each alone are made and waiting for the
-  testbed. The earlier sessions (18 November, the 0.10 kernel) opened Finder windows through
-  the bridge for minutes before such an error, so the kernel may play a part too.
-So the large-folder crash the user saw and these F-line errors are separate questions: the
-large-folder work above removes the memory, time and duplicate-answer problems a large folder
-caused, and the F-line errors need the testbed to tell which part of the Lagoon installation,
-or the kernel under it, sets them off.
+- Whether Lagoon has a part in it at all is not known yet. Two control runs of the same
+  System 7.1 image without Lagoon EtherTalk never reached the Finder window: with the testbed's
+  parameter RAM choosing Lagoon EtherTalk (`mac.xpram=e0:098100a8`), System 7.1 stops at
+  start-up with "A driver for the selected AppleTalk connection could not be found", and the
+  scripted click went nowhere. The next runs: the image as it is, without `mac.xpram` (no
+  Lagoon), then with Lagoon EtherTalk alone and with the Lagoon application alone; the earlier
+  sessions (18 November, the 0.10 kernel) opened Finder windows through the bridge for minutes
+  before such an error, so the kernel is a suspect as much as Lagoon.
+
+Whether the user's crash was this error or one of the large-folder problems above is open (the
+user's alert had no text; these have it). The work above removes the memory, time and
+duplicate-answer problems a large folder caused whatever the answer; the F-line errors need
+the testbed runs above to tell whether Lagoon, or the kernel under it, sets them off.
 
 **Remaining limits.** File names: the newest 1,024 files are remembered; a mangled name put
 away costs 20 bytes for the rest of the session (so about 50,000 such names fit in 1 MB). A
