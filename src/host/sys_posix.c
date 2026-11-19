@@ -14,13 +14,42 @@
 
 int ln_log_level = 0;
 
-void *ln_alloc(size_t n) { return calloc(1, n ? n : 1); }
-void ln_free(void *p) { free(p); }
+/* memory, counted: the tests can see how much the core holds (the Mac bridge's server lives in
+ * a fixed pool, src/mac/bridge/lm_pool.c) and give it a limit to run into. Each block carries
+ * its size in front of it. */
+size_t ln_host_mem_used, ln_host_mem_peak, ln_host_mem_limit;
+#define MEMHDR 16
+
+void *ln_alloc(size_t n)
+{
+	u8 *p;
+	if (!n)
+		n = 1;
+	if (ln_host_mem_limit && ln_host_mem_used + n > ln_host_mem_limit)
+		return NULL;
+	p = calloc(1, n + MEMHDR);
+	if (!p)
+		return NULL;
+	*(size_t *)p = n;
+	ln_host_mem_used += n;
+	if (ln_host_mem_used > ln_host_mem_peak)
+		ln_host_mem_peak = ln_host_mem_used;
+	return p + MEMHDR;
+}
+void ln_free(void *p)
+{
+	if (!p)
+		return;
+	ln_host_mem_used -= *(size_t *)((u8 *)p - MEMHDR);
+	free((u8 *)p - MEMHDR);
+}
 void *ln_realloc(void *p, size_t old_n, size_t new_n)
 {
-	u8 *q = realloc(p, new_n ? new_n : 1);
-	if (q && new_n > old_n)
-		memset(q + old_n, 0, new_n - old_n);
+	u8 *q = ln_alloc(new_n);
+	if (q && p)
+		memcpy(q, p, old_n < new_n ? old_n : new_n);
+	if (q)
+		ln_free(p);
 	return q;
 }
 

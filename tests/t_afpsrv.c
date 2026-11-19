@@ -9,6 +9,7 @@
  * larger than the requester's room.
  * SPDX-License-Identifier: GPL-2.0-only
  */
+#include <stdlib.h>
 #include "testutil.h"
 #include "ln_vfs.h"
 #include "ln_sys.h"
@@ -204,6 +205,229 @@ static s32 wr(u16 ref, u32 off, const void *data, size_t n, int *asked)
 	afp_b_u32(b, off);
 	afp_b_u32(b, (u32)n);
 	return call_write(b, data, n, asked);
+}
+
+
+/* ---- large folders (docs/mac.md, "Large folders"): what the Finder does with a folder of
+ * thousands of items, under a memory limit like the Mac bridge's pool ---- */
+extern size_t ln_host_mem_used, ln_host_mem_peak, ln_host_mem_limit;
+
+/* the names the user's share has: long ones (shown mangled), Unicode, plain ones */
+static void big_name(int i, char *out, size_t max)
+{
+	switch (i % 4) {
+	case 0: ln_snprintf(out, max, "Alice68-NativeCall-b92847d-interp-%05d.log", i); break;
+	case 1: ln_snprintf(out, max, "Track %05d \xe2\x80\x94 \xe6\x97\xa5\xe6\x9c\xac.mp3", i); break;
+	case 2: ln_snprintf(out, max, "\xc3\x9c" "ber %05d.txt", i); break;
+	default: ln_snprintf(out, max, "file%05d", i); break;
+	}
+}
+
+/* enumerate a folder the way the AppleShare client does: pages of up to reqcount entries, each
+ * reply at most maxrep bytes, StartIndex moving on by what came back. Every Mac name is
+ * checked to be unique; the count is returned (-1 on an error other than the end) */
+static int enum_all(u32 did, unsigned reqcount, unsigned maxrep, int *dirs, char (*keep)[32], int nkeep)
+{
+	int total = 0, first = 1, i;
+	static char seen[8192][32];
+	*dirs = 0;
+	for (;;) {
+		const u8 *p;
+		AfpBuf *b = start(FPEnumerate, 0);
+		s32 e;
+		int got;
+		afp_b_u16(b, AFPS_VOLID);
+		afp_b_u32(b, did);
+		afp_b_u16(b, FDBIT_ATTR | FDBIT_PDID | FDBIT_CDATE | FDBIT_MDATE | FDBIT_FINFO | FDBIT_LNAME | FDBIT_NODEID | FBIT_DFLEN | FBIT_RFLEN);
+		afp_b_u16(b, FDBIT_ATTR | FDBIT_PDID | FDBIT_CDATE | FDBIT_MDATE | FDBIT_FINFO | FDBIT_LNAME | FDBIT_NODEID | DBIT_OFFCNT | DBIT_ACCESS);
+		afp_b_u16(b, reqcount);
+		afp_b_u16(b, (unsigned)first);
+		afp_b_u16(b, maxrep);
+		path2(b, "");
+		e = call(b);
+		if (e == kFPObjectNotFound)
+			break;
+		if (e != kFPNoErr)
+			return -1;
+		CHECK(rsp.len <= maxrep);
+		got = ln_be16(rsp.data + 4);
+		p = rsp.data + 6;
+		for (i = 0; i < got; i++) {
+			char nm[32];
+			unsigned fo = 2 + 4 + 4 + 4 + 32;              /* attr, parent, dates, Finder info */
+			pname(p + 2, fo, nm);
+			if (total < (int)LN_ARRAY_SIZE(seen))
+				strcpy(seen[total], nm);
+			if (keep && total < nkeep)
+				strcpy(keep[total], nm);
+			*dirs += (p[1] & 0x80) != 0;
+			total++;
+			p += p[0];
+		}
+		first += got;
+	}
+	/* no Mac name twice */
+	{
+		int dup = 0, j, n = LN_MIN(total, (int)LN_ARRAY_SIZE(seen));
+		for (i = 0; i < n && !dup; i++)
+			for (j = i + 1; j < n; j++)
+				if (!strcmp(seen[i], seen[j])) {
+					fprintf(stderr, "duplicate Mac name \"%s\" at %d and %d\n", seen[i], i, j);
+					dup = 1;
+					break;
+				}
+		CHECK(!dup);
+	}
+	return total;
+}
+
+/* a server of its own, a guest session on it and the volume open */
+static AfpsServer *guest_server(const LnOps *ops, LnFs *fs)
+{
+	AsTransport t;
+	AfpsConfig cfg;
+	AfpBuf *b;
+	u8 u[4];
+	memset(&t, 0, sizeof t);
+	t.socket = SSS;
+	t.respond = t_respond;
+	t.request = t_request;
+	t.cancel = t_cancel;
+	memset(&cfg, 0, sizeof cfg);
+	ln_strlcpy(cfg.server, "Lagoon Test", sizeof cfg.server);
+	ln_strlcpy(cfg.volume, "Share", sizeof cfg.volume);
+	srv = afps_new(&cfg, ops, fs, &t);
+	CHECK(srv != NULL);
+	if (!srv)
+		return NULL;
+	u[0] = SP_OPENSESS; u[1] = ws.socket; u[2] = 0x01; u[3] = 0x00;
+	send_req(1, 1, u, NULL, 0, ++tid);
+	sid = rsp.user[1];
+	b = start(FPLogin, 0);
+	b->len = 1;                                  /* FPLogin has no pad byte */
+	afp_b_pstr(b, "AFPVersion 2.1");
+	afp_b_pstr(b, "No User Authent");
+	CHECK_INT(call(b), kFPNoErr);
+	b = start(FPOpenVol, 0);
+	afp_b_u16(b, AFPS_VBITS);
+	afp_b_pstr(b, "Share");
+	CHECK_INT(call(b), kFPNoErr);
+	return srv;
+}
+
+static void big_folders(const LnOps *ops, LnFs *fs)
+{
+	static const int sizes[] = { 500, 2000, 5000 };
+	char path[300], nm[200];
+	unsigned k;
+	if (!guest_server(ops, fs))
+		return;
+	for (k = 0; k < LN_ARRAY_SIZE(sizes); k++) {
+		int n = sizes[k], i, dirs, got, isdir;
+		size_t before;
+		u32 did;
+		static char keep[200][32];
+		ln_snprintf(path, sizeof path, "Big%d", n);
+		CHECK_INT(ops->mkdir(fs, path), LN_OK);
+		for (i = 0; i < n; i++) {
+			LnFile *f;
+			big_name(i, nm, sizeof nm);
+			ln_snprintf(path, sizeof path, "Big%d/%s", n, nm);
+			if (i % 50 == 7)
+				CHECK_INT(ops->mkdir(fs, path), LN_OK);
+			else if (ops->open(fs, path, LN_O_WRITE | LN_O_CREATE, &f) == LN_OK)
+				ops->close(f);
+		}
+		ln_snprintf(path, sizeof path, "Big%d", n);
+		CHECK_INT(getparms(AFPS_ROOT, path, 0, FDBIT_NODEID | DBIT_OFFCNT, &isdir), kFPNoErr);
+		did = ln_be32(rsp.data + 6);
+		CHECK_INT(ln_be16(rsp.data + 10), n);
+		before = ln_host_mem_used;
+		ln_host_mem_peak = before;
+		if (getenv("T_LIMIT"))
+			ln_host_mem_limit = before + (size_t)atoi(getenv("T_LIMIT"));
+		got = enum_all(did, 100, 4624, &dirs, keep, 200);
+		ln_host_mem_limit = 0;
+		CHECK_INT(got, n);
+		CHECK_INT(dirs, (n + 42) / 50);
+		printf("t_afpsrv: a folder of %d: %lu bytes more at the peak, %lu held after\n", n,
+		       (unsigned long)(ln_host_mem_peak - before), (unsigned long)(ln_host_mem_used - before));
+		/* the table holds a bounded number of file names (the oldest went), and the names that
+		 * came back first find their objects, the mangled ones too (listed again) */
+		CHECK(srv->names.live <= AFPS_LIVE_FILES);
+		if (n == 5000) {
+			/* listed again, the folder shows the same names: a mangled name keeps its ID */
+			static char again[200][32];
+			u32 mid = afps_mangled_id((const u8 *)keep[0], strlen(keep[0]));
+			CHECK(mid && afps_names_put_away(&srv->names, mid) != 0);
+			CHECK_INT(enum_all(did, 100, 4624, &dirs, again, 200), n);
+			for (i = 0; i < 200; i++)
+				CHECK_STR(again[i], keep[i]);
+			enum_all(did, 100, 4624, &dirs, NULL, 0);    /* and the first ones go again */
+		}
+		for (i = 0; i < 8; i++) {
+			u32 mid = afps_mangled_id((const u8 *)keep[i], strlen(keep[i]));
+			int away = mid && afps_names_put_away(&srv->names, mid) != 0;
+			if (n == 5000 && i == 0)
+				CHECK(away);                     /* "Alice68-NativeCall-b92847d-#..." went */
+			CHECK_INT(getparms(did, keep[i], FDBIT_NODEID, FDBIT_NODEID, &isdir), kFPNoErr);
+			if (away)
+				CHECK_INT(ln_be32(rsp.data + 6), mid);   /* found again, the same ID */
+		}
+	}
+	/* Finder info written between two pages of a listing shows on the later page: the window
+	 * knows which items have a "._" file and reads only those (the Finder writes the icon
+	 * positions of a window it opens while it reads on) */
+	{
+		static char keep[200][32];
+		int isdir, dirs, i, found = 0;
+		u32 did;
+		const u8 *p;
+		AfpBuf *b;
+		CHECK_INT(getparms(AFPS_ROOT, "Big500", 0, FDBIT_NODEID, &isdir), kFPNoErr);
+		did = ln_be32(rsp.data + 6);
+		CHECK_INT(enum_all(did, 100, 4624, &dirs, keep, 200), 500);
+		b = start(FPEnumerate, 0);                   /* the first page only */
+		afp_b_u16(b, AFPS_VOLID);
+		afp_b_u32(b, did);
+		afp_b_u16(b, FDBIT_FINFO | FDBIT_LNAME);
+		afp_b_u16(b, FDBIT_FINFO | FDBIT_LNAME);
+		afp_b_u16(b, 40);
+		afp_b_u16(b, 1);
+		afp_b_u16(b, 4624);
+		path2(b, "");
+		CHECK_INT(call(b), kFPNoErr);
+		CHECK_INT(ln_be16(rsp.data + 4), 40);
+		b = start(FPSetFileDirParms, 0);             /* item 151's Finder info */
+		afp_b_u16(b, AFPS_VOLID);
+		afp_b_u32(b, did);
+		afp_b_u16(b, FDBIT_FINFO);
+		path2(b, keep[150]);
+		afp_b_pad(b);
+		afp_b_mem(b, "TESTttxt\x01\x00\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0\0", 32);
+		CHECK_INT(call(b), kFPNoErr);
+		b = start(FPEnumerate, 0);                   /* items 141 to 180 */
+		afp_b_u16(b, AFPS_VOLID);
+		afp_b_u32(b, did);
+		afp_b_u16(b, FDBIT_FINFO | FDBIT_LNAME);
+		afp_b_u16(b, FDBIT_FINFO | FDBIT_LNAME);
+		afp_b_u16(b, 40);
+		afp_b_u16(b, 141);
+		afp_b_u16(b, 4624);
+		path2(b, "");
+		CHECK_INT(call(b), kFPNoErr);
+		p = rsp.data + 6;
+		for (i = 0; i < ln_be16(rsp.data + 4); i++) {
+			char nm[32];
+			pname(p + 2, 32, nm);
+			if (!strcmp(nm, keep[150]))
+				found = !memcmp(p + 2, "TESTttxt", 8) ? 1 : -1;
+			p += p[0];
+		}
+		CHECK_INT(found, 1);
+	}
+	afps_free(srv);
+	srv = NULL;
 }
 
 int main(void)
@@ -430,7 +654,8 @@ int main(void)
 		}
 		CHECK_INT(total, 7);
 		CHECK_INT(dirs, 1);
-		CHECK_STR(seen_names[0], "Dir1");                /* sorted by name */
+		CHECK_STR(seen_names[0], "ReadMe.txt");          /* in the share's own order */
+		CHECK_STR(seen_names[6], "Dir1");
 		/* the 134-byte name is shown mangled, and found again by that name */
 		for (i = 0; i < total && i < 16; i++)
 			if (strchr(seen_names[i], '#') && strlen(seen_names[i]) == 31)
@@ -824,6 +1049,8 @@ int main(void)
 			CHECK_INT(afps_relay(&rl, r3), 0);                 /* not the multinode */
 		}
 	}
+
+	big_folders(ops, fs);
 
 	ops->unmount(fs);
 	T_DONE("t_afpsrv");

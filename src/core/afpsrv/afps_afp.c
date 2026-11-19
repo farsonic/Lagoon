@@ -70,15 +70,45 @@ static int vstat(AfpsServer *s, const char *path, LnStat *st)
 	return rc;
 }
 
+static void win_close(AfpsServer *s);
+
 /* a modification: what was cached about the folders no longer holds */
 static void changed(AfpsServer *s)
 {
-	s->enum_dir = 0;
+	win_close(s);
 	memset(s->offs, 0, sizeof s->offs);
 }
 
 /* ---- pathnames (Inside AppleTalk 13-11): from directory did, elements separated by a NUL,
  * each further NUL in a row one level up ---- */
+/* a mangled name whose file was put away (afps_names.c): the name in the folder with the same
+ * hash and the same Mac name is the one, and is known again under its ID */
+static int find_again(AfpsServer *s, u32 parent, u32 id, const u8 *mac, size_t n, char *out, size_t max)
+{
+	u32 h = afps_names_put_away(&s->names, id);
+	char path[AFPS_PATH_MAX], nm[256];
+	LnDir *d;
+	LnStat st;
+	int r, found = 0;
+	if (!h || afps_names_path(&s->names, parent, path, sizeof path) != LN_OK)
+		return 0;
+	RETRY(s, r, s->ops->opendir(s->fs, path, &d));
+	if (r != LN_OK)
+		return 0;
+	while (!found && s->ops->readdir(d, nm, sizeof nm, &st) > 0) {
+		u8 m[AFPS_NAME_MAX + 1];
+		int l;
+		if (afps_names_hash(nm) != h)
+			continue;
+		l = afps_to_mac(nm, id, m, AFPS_NAME_MAX);
+		found = l == (int)n && !memcmp(m, mac, n) && afps_names_revive(&s->names, id, parent, nm);
+	}
+	s->ops->closedir(d);
+	if (found)
+		ln_strlcpy(out, nm, max);
+	return found;
+}
+
 static void elem_name(AfpsServer *s, u32 parent, const u8 *mac, size_t n, char *out, size_t max)
 {
 	u32 id = afps_mangled_id(mac, n);
@@ -87,6 +117,8 @@ static void elem_name(AfpsServer *s, u32 parent, const u8 *mac, size_t n, char *
 		ln_strlcpy(out, nd->name, max);
 		return;
 	}
+	if (id && !nd && find_again(s, parent, id, mac, n, out, max))
+		return;
 	if (afps_mac_to_utf8(mac, n, out, max) < 0)
 		out[0] = 0;
 }
@@ -214,7 +246,8 @@ static void guess_finfo(const char *name, u8 fi[32])
 
 static void finfo_of(AfpsServer *s, const char *path, const char *name, int isdir, AfpsAd *ad)
 {
-	afps_ad_read(s->ops, s->fs, path, ad);
+	if (!s->no_ad)
+		afps_ad_read(s->ops, s->fs, path, ad);
 	if (!ad->exists && !isdir)
 		guess_finfo(name, ad->finfo);
 	if (name[0] == '.') {                        /* Unix dot files stay out of the Finder's way */
@@ -373,6 +406,7 @@ static void fork_close(AfpsServer *s, AfpsFork *f)
 		s->ops->flush(f->f);
 		s->ops->close(f->f);
 	}
+	afps_names_pin(&s->names, f->node, -1);
 	memset(f, 0, sizeof *f);
 }
 
@@ -405,11 +439,16 @@ void afps_afp_free(AfpsServer *s)
 	for (i = 0; i < AFPS_MAXFORK; i++)
 		if (s->fork[i].used)
 			fork_close(s, &s->fork[i]);
-	for (i = 0; i < s->nent; i++)
-		ln_free(s->ent[i].name);
-	ln_free(s->ent);
-	s->ent = NULL;
-	s->nent = s->maxent = 0;
+	win_close(s);
+}
+
+void afps_afp_tick(AfpsServer *s)
+{
+	if (s->win.d && ln_ms() - s->win.when > AFPS_WIN_IDLE_MS) {
+		s->ops->closedir(s->win.d);          /* the window stays; a page past it lists again */
+		s->win.d = NULL;
+		s->win.dir = 0;
+	}
 }
 
 /* ---- the calls ---- */
@@ -479,54 +518,137 @@ static s32 do_getfiledirparms(AfpsServer *s, Rd *r, AfpBuf *b)
 	return b->err ? kFPMiscErr : kFPNoErr;
 }
 
-static int ent_cmp(const AfpsEnt *a, const AfpsEnt *b) { return strcmp(a->name, b->name); }
+/* ---- FPEnumerate's window (afps_int.h, AfpsWin) ----
+ * An entry in the window: this header, then the name and its NUL, the whole padded to four
+ * bytes. What put_params needs of the entry's LnStat is kept, nothing more. */
+typedef struct WinEnt {
+	u16 len;                 /* the whole entry, a multiple of 4 */
+	u8  isdir, pad;
+	u32 size, mtime, ctime, prot;
+} WinEnt;
+#define WIN_HDR   ((size_t)sizeof(WinEnt))
+#define WIN_MAXENT (WIN_HDR + 256 + 4)
 
-static int list_dir(AfpsServer *s, u32 id, const char *path)
+static void win_close(AfpsServer *s)
+{
+	if (s->win.d)
+		s->ops->closedir(s->win.d);
+	s->win.d = NULL;
+	s->win.dir = 0;
+	s->win.used = 0;
+	s->win.files_before = s->win.dirs_before = 0;
+	s->win.adknown = 0;
+}
+
+/* the window's bits for "._" files (afps_int.h): name's bit */
+static unsigned ad_bit(const char *name)
+{
+	return (unsigned)(afps_names_hash(name) % AFPS_AD_BITS);
+}
+
+/* may name have a "._" file? Unless the first look found none */
+static int ad_maybe(const AfpsServer *s, const char *name)
+{
+	unsigned k = ad_bit(name);
+	return !s->win.adknown || (s->win.ad[k / 8] & (1u << (k % 8)));
+}
+
+/* name has a "._" file now (the server has just written it) */
+static void ad_mark(AfpsServer *s, const char *name)
+{
+	unsigned k = ad_bit(name);
+	s->win.ad[k / 8] |= (u8)(1u << (k % 8));
+}
+
+/* the first look: which names in the folder have a "._" file */
+static void win_prescan(AfpsServer *s, const char *path)
 {
 	LnDir *d;
 	char nm[256];
 	LnStat st;
-	int r, i;
-	for (i = 0; i < s->nent; i++)
-		ln_free(s->ent[i].name);
-	s->nent = 0;
-	s->enum_dir = 0;
-	RETRY(s, r, s->ops->opendir(s->fs, path, &d));
-	if (r != LN_OK)
+	int r;
+	memset(s->win.ad, 0, sizeof s->win.ad);
+	s->win.adknown = 0;
+	if (s->ops->opendir(s->fs, path, &d) != LN_OK)
+		return;
+	while ((r = s->ops->readdir(d, nm, sizeof nm, &st)) > 0)
+		if (nm[0] == '.' && nm[1] == '_' && nm[2])
+			ad_mark(s, nm + 2);
+	s->ops->closedir(d);
+	s->win.adknown = r == 0;
+}
+
+static int win_open(AfpsServer *s, u32 id, const char *path)
+{
+	int r;
+	win_close(s);
+	RETRY(s, r, s->ops->opendir(s->fs, path, &s->win.d));
+	if (r != LN_OK) {
+		s->win.d = NULL;
 		return r;
-	while ((r = s->ops->readdir(d, nm, sizeof nm, &st)) > 0) {
+	}
+	s->win.dir = id;
+	return LN_OK;
+}
+
+static const u8 *win_at(const AfpsServer *s, size_t pos, WinEnt *e)
+{
+	const u8 *p = (const u8 *)s->win.buf + pos;
+	memcpy(e, p, WIN_HDR);
+	return p + WIN_HDR;
+}
+
+/* entries [0, upto) go out of the front of the window */
+static void win_drop(AfpsServer *s, size_t upto)
+{
+	size_t pos = 0;
+	u8 *b = (u8 *)s->win.buf;
+	while (pos < upto) {
+		WinEnt e;
+		win_at(s, pos, &e);
+		if (e.isdir)
+			s->win.dirs_before++;
+		else
+			s->win.files_before++;
+		pos += e.len;
+	}
+	memmove(b, b + upto, s->win.used - upto);
+	s->win.used -= upto;
+}
+
+/* read on in the listing until the window is full or the folder ends (the listing closes) */
+static int win_more(AfpsServer *s)
+{
+	char nm[256];
+	LnStat st;
+	int r;
+	while (s->win.d && s->win.used + WIN_MAXENT <= sizeof s->win.buf) {
+		WinEnt e;
+		size_t nl;
+		r = s->ops->readdir(s->win.d, nm, sizeof nm, &st);
+		if (r <= 0) {
+			s->ops->closedir(s->win.d);
+			s->win.d = NULL;
+			if (r < 0) {
+				s->win.dir = 0;              /* half a listing: the next call starts again */
+				return r;
+			}
+			break;
+		}
 		if (afps_hidden_name(nm) || (st.type != LN_T_DIR && st.type != LN_T_FILE))
 			continue;
-		if (s->nent == s->maxent) {
-			int nm2 = s->maxent ? s->maxent * 2 : 64;
-			AfpsEnt *m = ln_realloc(s->ent, sizeof(AfpsEnt) * (size_t)s->maxent, sizeof(AfpsEnt) * (size_t)nm2);
-			if (!m)
-				break;
-			s->ent = m;
-			s->maxent = nm2;
-		}
-		s->ent[s->nent].name = ln_strdup(nm);
-		if (!s->ent[s->nent].name)
-			break;
-		s->ent[s->nent].st = st;
-		s->nent++;
+		nl = strlen(nm);
+		memset(&e, 0, sizeof e);
+		e.len = (u16)((WIN_HDR + nl + 1 + 3) & ~(size_t)3);
+		e.isdir = st.type == LN_T_DIR;
+		e.size = (u32)LN_MIN(st.size, (u64)0x7FFFFFFF);
+		e.mtime = st.mtime;
+		e.ctime = st.ctime;
+		e.prot = st.prot;
+		memcpy((u8 *)s->win.buf + s->win.used, &e, WIN_HDR);
+		memcpy((u8 *)s->win.buf + s->win.used + WIN_HDR, nm, nl + 1);
+		s->win.used += e.len;
 	}
-	s->ops->closedir(d);
-	if (r < 0)
-		return r;
-	/* sorted by name, so that the order is the same however often the folder is listed
-	 * (insertion sort: folders have tens of entries, and this runs once per listing) */
-	for (i = 1; i < s->nent; i++) {
-		AfpsEnt t = s->ent[i];
-		int j = i - 1;
-		while (j >= 0 && ent_cmp(&s->ent[j], &t) > 0) {
-			s->ent[j + 1] = s->ent[j];
-			j--;
-		}
-		s->ent[j + 1] = t;
-	}
-	s->enum_dir = id;
-	s->enum_when = ln_ms();
 	return LN_OK;
 }
 
@@ -539,8 +661,9 @@ static s32 do_enumerate(AfpsServer *s, Rd *r, AfpBuf *b, size_t rmax)
 	char path[AFPS_PATH_MAX], cpath[AFPS_PATH_MAX];
 	LnStat st;
 	s32 e;
-	int i, idx = 0, got = 0;
-	size_t limit, cnt_at;
+	int got = 0, rc, retried = 0;
+	long skip, page = -1;
+	size_t limit, cnt_at, pos = 0;
 	if (r->err || vol != AFPS_VOLID)
 		return kFPParamErr;
 	if ((fbm & ~AFPS_FBITS) || (dbm & ~AFPS_DBITS) || (!fbm && !dbm))
@@ -552,41 +675,92 @@ static s32 do_enumerate(AfpsServer *s, Rd *r, AfpBuf *b, size_t rmax)
 		return e == kFPObjectNotFound ? kFPDirNotFound : e;
 	if (st.type != LN_T_DIR)
 		return kFPObjectTypeErr;
-	if (!(s->enum_dir == id && start > 1 && ln_ms() - s->enum_when < 30000)) {
-		int rc = list_dir(s, id, path);
+	/* StartIndex counts only what was asked for (files, folders or both): how many of those
+	 * to pass over in the window. StartIndex 1, another folder, or a page before the window:
+	 * the folder is listed from its start */
+	skip = (long)start - 1 - (long)((fbm ? s->win.files_before : 0) + (dbm ? s->win.dirs_before : 0));
+	if (s->win.dir != id || start == 1 || skip < 0) {
+		rc = win_open(s, id, path);
 		if (rc != LN_OK)
 			return fperr(rc);
+		if ((fbm | dbm) & (FDBIT_FINFO | FBIT_RFLEN))
+			win_prescan(s, path);
+		skip = (long)start - 1;
 	}
+	s->win.when = ln_ms();
 	limit = LN_MIN((size_t)maxrep, rmax);
 	afp_b_u16(b, fbm);
 	afp_b_u16(b, dbm);
 	cnt_at = b->len;
 	afp_b_u16(b, 0);
-	for (i = 0; i < s->nent && got < (int)want; i++) {
-		AfpsEnt *en = &s->ent[i];
-		int isdir = en->st.type == LN_T_DIR;
-		size_t at = b->len, l;
+	while (got < (int)want) {
+		WinEnt en;
+		const char *name;
+		size_t at, l;
 		u32 cid;
-		if ((isdir && !dbm) || (!isdir && !fbm))
-			continue;                            /* StartIndex counts only what was asked for */
-		if (++idx < (int)start)
+		LnStat cst;
+		if (pos >= s->win.used) {
+			/* past the window: what came before this page goes, the listing reads on */
+			size_t drop = page >= 0 ? (size_t)page : pos;
+			if (!s->win.d)
+				break;                           /* the end of the folder */
+			if (drop == 0 && s->win.used + WIN_MAXENT > sizeof s->win.buf)
+				drop = pos;                      /* the page alone fills the window */
+			win_drop(s, drop);
+			pos -= drop;
+			if (page >= 0)
+				page -= (long)drop;
+			rc = win_more(s);
+			if (rc != LN_OK) {
+				if (got)
+					break;                       /* this much; the next call lists again */
+				if (retried++ || win_open(s, id, path) != LN_OK)
+					return fperr(rc);
+				skip = (long)start - 1;          /* the listing went (a reconnect): again */
+				pos = 0;
+				page = -1;
+			}
 			continue;
-		cid = afps_names_id(&s->names, id, en->name, isdir);
-		if (!cid || ln_path_join(cpath, sizeof cpath, path, en->name) != LN_OK)
+		}
+		name = (const char *)win_at(s, pos, &en);
+		at = pos;
+		pos += en.len;
+		if ((en.isdir && !dbm) || (!en.isdir && !fbm))
 			continue;
+		if (skip > 0) {
+			skip--;
+			continue;
+		}
+		if (page < 0)
+			page = (long)at;
+		cid = afps_names_id(&s->names, id, name, en.isdir);
+		if (!cid)
+			return got ? kFPNoErr : kFPMiscErr;  /* out of memory: say so, show what fitted */
+		if (ln_path_join(cpath, sizeof cpath, path, name) != LN_OK)
+			continue;
+		memset(&cst, 0, sizeof cst);
+		cst.type = en.isdir ? LN_T_DIR : LN_T_FILE;
+		cst.size = en.size;
+		cst.mtime = en.mtime;
+		cst.ctime = en.ctime;
+		cst.prot = en.prot;
+		at = b->len;
 		afp_b_u8(b, 0);
-		afp_b_u8(b, isdir ? 0x80 : 0);
-		put_params(s, b, (u16)(isdir ? dbm : fbm), isdir, cid, id, en->name, cpath, &en->st);
+		afp_b_u8(b, en.isdir ? 0x80 : 0);
+		s->no_ad = (u8)!ad_maybe(s, name);
+		put_params(s, b, (u16)(en.isdir ? dbm : fbm), en.isdir, cid, id, name, cpath, &cst);
+		s->no_ad = 0;
 		afp_b_pad(b);
 		l = b->len - at;
 		if (b->err || b->len > limit || l > 255) {
-			b->len = at;                     /* this one does not fit: the next call gets it */
+			b->len = at;                         /* this one does not fit: the next call gets it */
 			b->err = 0;
 			break;
 		}
 		b->p[at] = (u8)l;
 		got++;
 	}
+	LN_LOG(2, "afpsrv: enumerate %lu from %u (%u asked, %u bytes): %d", (unsigned long)id, start, want, maxrep, got);
 	if (!got)
 		return kFPObjectNotFound;
 	ln_put_be16(b->p + cnt_at, (u16)got);
@@ -822,9 +996,12 @@ static s32 do_setparms(AfpsServer *s, Rd *r, int want)
 			return kFPParamErr;
 		memcpy(fi, r->p + r->o, 32);
 		r->o += 32;
+		/* in a "._" file, which no listing shows: what the server keeps of the folder
+		 * (FPEnumerate's window, offspring counts) still holds. The Finder writes Finder
+		 * info for the items of a window it opens, between the pages of its listing */
 		if (id != AFPS_ROOT && afps_ad_set_finfo(s->ops, s->fs, path, fi) != LN_OK)
 			LN_LOG(1, "afpsrv: no Finder info kept for %s", path);
-		changed(s);
+		ad_mark(s, pa.name[0] ? pa.name : (afps_names_node(&s->names, id) ? afps_names_node(&s->names, id)->name : ""));
 	}
 	if (r->err)
 		return kFPParamErr;
@@ -863,6 +1040,8 @@ static s32 do_openfork(AfpsServer *s, AfpsSess *se, Rd *r, AfpBuf *b, int rsrc)
 	memset(f, 0, sizeof *f);
 	if (rsrc) {
 		RETRY(s, rc, afps_ad_open(s->ops, s->fs, path, wr, wr, &f->f, &f->ad));
+		if (wr)
+			ad_mark(s, pa.name);
 		if (rc == LN_ENOENT && !wr)
 			rc = LN_OK;                          /* no "._" file: an empty resource fork */
 		else if (rc == LN_EPROTO)
@@ -878,6 +1057,7 @@ static s32 do_openfork(AfpsServer *s, AfpsSess *se, Rd *r, AfpBuf *b, int rsrc)
 	f->write = (u8)wr;
 	f->sess = se->id;
 	f->node = id;
+	afps_names_pin(&s->names, id, 1);           /* the file's name stays known while it is open */
 	afp_b_u16(b, bm);
 	afp_b_u16(b, (unsigned)(f - s->fork) + 1);
 	if (bm)

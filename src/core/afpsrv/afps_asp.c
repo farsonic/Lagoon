@@ -187,8 +187,10 @@ static void reply(AfpsServer *s, const AsReq *q, s32 result, const u8 *data, siz
 static void command(AfpsServer *s, AfpsSess *se, const AsReq *q, const u8 *cmd, size_t n, const u8 *wdata, size_t wlen)
 {
 	size_t rlen = 0;
+	u32 t0 = ln_ms();
 	s32 e = afps_afp_call(s, se, cmd, n, wdata, wlen, s->scratch, LN_MIN(room(q), (size_t)AS_QUANTUM), &rlen);
-	LN_LOG(2, "afpsrv: call %u: result %ld, %lu bytes", n ? cmd[0] : 0, (long)e, (unsigned long)rlen);
+	LN_LOG(2, "afpsrv: call %u: result %ld, %lu bytes, %lu ms", n ? cmd[0] : 0, (long)e, (unsigned long)rlen,
+	       (unsigned long)(ln_ms() - t0));
 	reply(s, q, e, s->scratch, rlen);
 }
 
@@ -327,6 +329,7 @@ void afps_tick(AfpsServer *s)
 {
 	int i;
 	u32 now = ln_ms();
+	afps_afp_tick(s);
 	for (i = 0; i < AFPS_MAXSESS; i++)
 		if (s->sess[i].used && now - s->sess[i].last_rx > ASP_TIMEOUT_MS) {
 			LN_LOG(1, "afpsrv: session %u timed out", s->sess[i].id);

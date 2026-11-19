@@ -124,7 +124,17 @@ u32 afps_mangled_id(const u8 *mac, size_t n)
 	return id;
 }
 
-/* ---- the ID table ---- */
+/* ---- the ID table ----
+ * Nodes live in pages of AFPS_PAGE, found through a page list that grows by a pointer, so that
+ * the table never moves a large block (the Mac bridge's pool is first fit, docs/mac.md "Large
+ * folders"). A folder's node stays for as long as the server runs: the client keeps folder IDs.
+ * A file's node is only the server's memory of a name, and once more than AFPS_LIVE_FILES files
+ * are known the oldest go: a file with a plain Mac name entirely (its slot is used again; the
+ * client gets a new file number when it next sees the file, which AFP 2 allows), a file shown
+ * mangled down to its parent and its name's hash, so that "start#ID" is found again by listing
+ * the folder (afps_names_revive). A file with an open fork is not put away. */
+#define NODE(t, id) (&(t)->page[(id) / AFPS_PAGE][(id) % AFPS_PAGE])
+
 static u32 hash(u32 parent, const char *name)
 {
 	u32 h = parent * 2654435761u;
@@ -133,84 +143,229 @@ static u32 hash(u32 parent, const char *name)
 	return h % AFPS_HASH;
 }
 
+/* a name's own hash, kept for a mangled file put away; never 0 */
+u32 afps_names_hash(const char *name)
+{
+	u32 h = 2166136261u;
+	for (; *name; name++)
+		h = (h ^ (u8)*name) * 16777619u;
+	return h | 1;
+}
+
+/* is the name shown "start#ID"? (afps_to_mac with an ID that cannot be mistaken) */
+static int mangled(const char *name)
+{
+	u8 mac[AFPS_NAME_MAX + 1];
+	int l = afps_to_mac(name, 0xFFFFFFFFu, mac, AFPS_NAME_MAX);
+	return l < 0 || afps_mangled_id(mac, (size_t)l) == 0xFFFFFFFFu;
+}
+
+/* a free slot (one given back, else a new one at the end); 0 = out of memory */
+static u32 slot(AfpsNames *t)
+{
+	u32 id;
+	if (t->free) {
+		id = t->free;
+		t->free = NODE(t, id)->hnext;
+		memset(NODE(t, id), 0, sizeof(AfpsNode));
+		return id;
+	}
+	if (t->count / AFPS_PAGE >= t->npages) {
+		AfpsNode **pl = ln_realloc(t->page, sizeof(AfpsNode *) * t->npages, sizeof(AfpsNode *) * (t->npages + 16));
+		if (!pl)
+			return 0;
+		t->page = pl;
+		t->npages += 16;
+	}
+	if (!t->page[t->count / AFPS_PAGE]) {
+		t->page[t->count / AFPS_PAGE] = ln_alloc(sizeof(AfpsNode) * AFPS_PAGE);
+		if (!t->page[t->count / AFPS_PAGE])
+			return 0;
+	}
+	return t->count++;
+}
+
 int afps_names_init(AfpsNames *t)
 {
 	memset(t, 0, sizeof *t);
-	t->n = ln_alloc(sizeof(AfpsNode) * 256);
-	if (!t->n)
-		return LN_ENOMEM;
-	t->count = AFPS_FIRST_ID;
-	t->n[AFPS_ROOT].name = ln_strdup("");
-	t->n[AFPS_ROOT].parent = AFPS_PARENT_OF_ROOT;
-	t->n[AFPS_ROOT].isdir = 1;
-	return t->n[AFPS_ROOT].name ? LN_OK : LN_ENOMEM;
+	t->count = 1;                                /* ID 0 is nobody */
+	while (t->count < AFPS_FIRST_ID)
+		if (!slot(t))
+			return LN_ENOMEM;
+	t->evict = AFPS_FIRST_ID;
+	NODE(t, AFPS_ROOT)->name = ln_strdup("");
+	NODE(t, AFPS_ROOT)->parent = AFPS_PARENT_OF_ROOT;
+	NODE(t, AFPS_ROOT)->isdir = 1;
+	return NODE(t, AFPS_ROOT)->name ? LN_OK : LN_ENOMEM;
 }
 
 void afps_names_free(AfpsNames *t)
 {
 	u32 i;
-	if (t->n)
-		for (i = 0; i < t->count; i++)
-			ln_free(t->n[i].name);
-	ln_free(t->n);
+	for (i = 0; i < t->count; i++)
+		ln_free(NODE(t, i)->name);
+	for (i = 0; i < t->npages; i++)
+		ln_free(t->page[i]);
+	ln_free(t->page);
 	memset(t, 0, sizeof *t);
 }
 
 const AfpsNode *afps_names_node(const AfpsNames *t, u32 id)
 {
-	return id < t->count && t->n[id].name ? &t->n[id] : NULL;
+	return id < t->count && NODE(t, id)->name ? NODE(t, id) : NULL;
 }
 
 u32 afps_names_find(const AfpsNames *t, u32 parent, const char *name)
 {
 	u32 id = t->hash[hash(parent, name)];
-	for (; id; id = t->n[id].hnext)
-		if (t->n[id].name && t->n[id].parent == parent && !strcmp(t->n[id].name, name))
+	for (; id; id = NODE(t, id)->hnext)
+		if (NODE(t, id)->parent == parent && !strcmp(NODE(t, id)->name, name))
 			return id;
 	return 0;
 }
 
 static void link_in(AfpsNames *t, u32 id)
 {
-	u32 h = hash(t->n[id].parent, t->n[id].name);
-	t->n[id].hnext = t->hash[h];
+	u32 h = hash(NODE(t, id)->parent, NODE(t, id)->name);
+	NODE(t, id)->hnext = t->hash[h];
 	t->hash[h] = id;
+}
+
+/* the chains of mangled files put away, by parent and name hash */
+static u32 *away_head(AfpsNames *t, u32 parent, u32 h)
+{
+	return &t->away[(parent * 2654435761u ^ h) % AFPS_HASH];
+}
+
+static void away_unlink(AfpsNames *t, u32 id)
+{
+	u32 *pp = away_head(t, NODE(t, id)->parent, NODE(t, id)->mark);
+	while (*pp && *pp != id)
+		pp = &NODE(t, *pp)->hnext;
+	if (*pp)
+		*pp = NODE(t, id)->hnext;
+	NODE(t, id)->hnext = 0;
+}
+
+/* a put-away node takes its name back */
+static int take_back(AfpsNames *t, u32 id, const char *name)
+{
+	char *nm = ln_strdup(name);
+	if (!nm)
+		return 0;
+	away_unlink(t, id);
+	NODE(t, id)->name = nm;
+	NODE(t, id)->mark = t->clock;
+	link_in(t, id);
+	t->live++;
+	return 1;
 }
 
 static void unlink_out(AfpsNames *t, u32 id)
 {
-	u32 *pp = &t->hash[hash(t->n[id].parent, t->n[id].name)];
+	u32 *pp = &t->hash[hash(NODE(t, id)->parent, NODE(t, id)->name)];
 	while (*pp && *pp != id)
-		pp = &t->n[*pp].hnext;
+		pp = &NODE(t, *pp)->hnext;
 	if (*pp)
-		*pp = t->n[id].hnext;
-	t->n[id].hnext = 0;
+		*pp = NODE(t, id)->hnext;
+	NODE(t, id)->hnext = 0;
+}
+
+/* put files away, the least recently used first, until AFPS_LIVE_FILES are left. A file used
+ * in the last AFPS_LIVE_FILES / 2 lookups stays: the caller may still hold its ID */
+static void put_away(AfpsNames *t)
+{
+	u32 tries = t->count;
+	while (t->live > AFPS_LIVE_FILES && tries--) {
+		u32 id = t->evict;
+		AfpsNode *nd;
+		if (++t->evict >= t->count)
+			t->evict = AFPS_FIRST_ID;            /* round again */
+		nd = NODE(t, id);
+		if (!nd->name || nd->isdir || nd->pins || t->clock - nd->mark < AFPS_LIVE_FILES / 2)
+			continue;
+		unlink_out(t, id);
+		if (mangled(nd->name)) {
+			u32 *head;
+			nd->mark = afps_names_hash(nd->name);   /* the parent stays, to be found again */
+			ln_free(nd->name);
+			nd->name = NULL;
+			head = away_head(t, nd->parent, nd->mark);
+			nd->hnext = *head;
+			*head = id;
+		} else {
+			ln_free(nd->name);
+			memset(nd, 0, sizeof *nd);
+			nd->hnext = t->free;                 /* the slot is used again */
+			t->free = id;
+		}
+		t->live--;
+	}
 }
 
 u32 afps_names_id(AfpsNames *t, u32 parent, const char *name, int isdir)
 {
 	u32 id = afps_names_find(t, parent, name);
+	char *nm;
+	t->clock++;
 	if (id) {
-		if (isdir >= 0)
-			t->n[id].isdir = (u8)(isdir > 0);
+		NODE(t, id)->mark = t->clock;
+		if (isdir >= 0 && NODE(t, id)->isdir != (u8)(isdir > 0)) {
+			if (isdir > 0) t->live--; else t->live++;
+			NODE(t, id)->isdir = (u8)(isdir > 0);
+		}
 		return id;
 	}
-	if ((t->count & 255) == 0) {                 /* the array grows 256 entries at a time */
-		AfpsNode *m = ln_realloc(t->n, sizeof(AfpsNode) * t->count, sizeof(AfpsNode) * (t->count + 256));
-		if (!m)
-			return 0;
-		memset(m + t->count, 0, sizeof(AfpsNode) * 256);
-		t->n = m;
+	if (isdir <= 0) {
+		/* a mangled file that was put away and is seen again keeps its ID, and so its name */
+		u32 h = afps_names_hash(name);
+		for (id = *away_head(t, parent, h); id; id = NODE(t, id)->hnext)
+			if (NODE(t, id)->parent == parent && NODE(t, id)->mark == h)
+				break;
+		if (id && mangled(name))
+			return take_back(t, id, name) ? (put_away(t), id) : 0;
 	}
-	id = t->count;
-	t->n[id].name = ln_strdup(name);
-	if (!t->n[id].name)
+	nm = ln_strdup(name);
+	if (!nm || !(id = slot(t))) {
+		ln_free(nm);
 		return 0;
-	t->count++;
-	t->n[id].parent = parent;
-	t->n[id].isdir = (u8)(isdir > 0);
+	}
+	NODE(t, id)->name = nm;
+	NODE(t, id)->parent = parent;
+	NODE(t, id)->isdir = (u8)(isdir > 0);
+	NODE(t, id)->mark = t->clock;
 	link_in(t, id);
+	if (isdir <= 0) {
+		t->live++;
+		put_away(t);
+	}
 	return id;
+}
+
+/* a mangled file's node that was put away: is name (in parent) the one it was? Then it is
+ * known again, under the same ID */
+int afps_names_revive(AfpsNames *t, u32 id, u32 parent, const char *name)
+{
+	AfpsNode *nd;
+	if (id < AFPS_FIRST_ID || id >= t->count)
+		return 0;
+	nd = NODE(t, id);
+	if (nd->name || !nd->mark || nd->parent != parent || nd->mark != afps_names_hash(name) ||
+	    afps_names_find(t, parent, name))
+		return 0;
+	t->clock++;
+	return take_back(t, id, name);
+}
+
+u32 afps_names_put_away(const AfpsNames *t, u32 id)
+{
+	return id >= AFPS_FIRST_ID && id < t->count && !NODE(t, id)->name ? NODE(t, id)->mark : 0;
+}
+
+void afps_names_pin(AfpsNames *t, u32 id, int by)
+{
+	if (afps_names_node(t, id))
+		NODE(t, id)->pins = (u8)(NODE(t, id)->pins + by);
 }
 
 int afps_names_path(const AfpsNames *t, u32 id, char *out, size_t max)
@@ -226,7 +381,7 @@ int afps_names_path(const AfpsNames *t, u32 id, char *out, size_t max)
 		id = nd->parent;
 	}
 	for (i = depth - 1; i >= 0; i--)
-		if (ln_path_join(out, max, out, t->n[chain[i]].name) != LN_OK)
+		if (ln_path_join(out, max, out, NODE(t, chain[i])->name) != LN_OK)
 			return LN_ENAMETOOLONG;
 	return LN_OK;
 }
@@ -240,9 +395,9 @@ void afps_names_move(AfpsNames *t, u32 id, u32 parent, const char *name)
 	if (!nn)
 		return;
 	unlink_out(t, id);
-	ln_free(t->n[id].name);
-	t->n[id].name = nn;
-	t->n[id].parent = parent;
+	ln_free(NODE(t, id)->name);
+	NODE(t, id)->name = nn;
+	NODE(t, id)->parent = parent;
 	link_in(t, id);
 }
 
@@ -251,6 +406,9 @@ void afps_names_forget(AfpsNames *t, u32 id)
 	if (!afps_names_node(t, id) || id == AFPS_ROOT)
 		return;
 	unlink_out(t, id);
-	ln_free(t->n[id].name);
-	t->n[id].name = NULL;
+	if (!NODE(t, id)->isdir)
+		t->live--;
+	ln_free(NODE(t, id)->name);
+	NODE(t, id)->name = NULL;
+	NODE(t, id)->mark = 0;                       /* gone: not to be found again */
 }

@@ -55,24 +55,38 @@ enum {
  * AFP 2.x names everything by a directory ID and a path from there. The VFS knows only paths,
  * so each folder (and each file the client has seen, for its file number) gets an ID when it is
  * first met; the entry keeps its parent's ID and its own name, so a rename or move is one edit
- * and the paths below follow. IDs are never reused while the server runs. */
+ * and the paths below follow. Folder IDs are never reused while the server runs, and folders
+ * are never forgotten. Files are: only the newest AFPS_LIVE_FILES keep their names, so that a
+ * session that browses a large share holds a bounded table (afps_names.c, docs/mac.md). */
 typedef struct AfpsNode {
-	char *name;              /* the server's name (UTF-8 NFC); NULL = unused */
+	char *name;              /* the server's name (UTF-8 NFC); NULL = unused or put away */
 	u32   parent;
-	u32   hnext;             /* next ID in the same hash chain, 0 = end */
+	u32   hnext;             /* next ID in the same hash chain (put away: in the away chain;
+	                            free: the next free slot), 0 = end */
+	u32   mark;              /* in use: the table's clock when last looked up; a mangled file
+	                            put away: its name's hash (afps_names_hash), never 0 */
 	u8    isdir;
+	u8    pins;              /* open forks on it: never put away */
 } AfpsNode;
 #define AFPS_HASH 512
+#define AFPS_PAGE 256            /* nodes per page */
+#define AFPS_LIVE_FILES 1024     /* file names kept; the oldest beyond go */
 
 typedef struct AfpsNames {
-	AfpsNode *n;
-	u32  count;              /* IDs 0 .. count-1 exist in n[] */
+	AfpsNode **page;         /* npages pointers, the pages in use allocated */
+	u32  npages;
+	u32  count;              /* IDs 0 .. count-1 have a slot */
+	u32  free;               /* a slot given back (its hnext the next), 0 = none */
+	u32  live;               /* files with a name */
+	u32  evict;              /* where put_away looks next */
+	u32  clock;              /* counts lookups, for mark */
 	u32  hash[AFPS_HASH];
+	u32  away[AFPS_HASH];    /* mangled files put away, chained by hnext */
 } AfpsNames;
 
 int   afps_names_init(AfpsNames *t);
 void  afps_names_free(AfpsNames *t);
-/* the ID of name in parent, made if new; 0 = out of memory */
+/* the ID of name in parent, made if new; 0 = out of memory. isdir -1: as it was */
 u32   afps_names_id(AfpsNames *t, u32 parent, const char *name, int isdir);
 /* the ID of name in parent if known, else 0 */
 u32   afps_names_find(const AfpsNames *t, u32 parent, const char *name);
@@ -82,6 +96,12 @@ int   afps_names_path(const AfpsNames *t, u32 id, char *out, size_t max);
 /* id is now name in parent (rename or move); forget removes it */
 void  afps_names_move(AfpsNames *t, u32 id, u32 parent, const char *name);
 void  afps_names_forget(AfpsNames *t, u32 id);
+/* a mangled file's ID that was put away: its name's hash (else 0), and the name found again */
+u32   afps_names_put_away(const AfpsNames *t, u32 id);
+u32   afps_names_hash(const char *name);
+int   afps_names_revive(AfpsNames *t, u32 id, u32 parent, const char *name);
+/* an open fork holds its file's node (by +1 on open, -1 on close) */
+void  afps_names_pin(AfpsNames *t, u32 id, int by);
 
 /* Mac Roman <-> UTF-8. to_mac: the name the Mac sees, at most 31 bytes; a name with characters
  * Mac Roman lacks, or longer, becomes "start#ID" (the ID in hex, as Netatalk does), which
@@ -157,12 +177,29 @@ typedef struct AfpsWrite {
 	size_t cmdlen;
 } AfpsWrite;
 
-/* the last FPEnumerate's listing, kept so that the next call (StartIndex > 1) sees the same
- * order without listing the folder again */
-typedef struct AfpsEnt {
-	char  *name;
-	LnStat st;
-} AfpsEnt;
+/* FPEnumerate's window on a folder (afps_afp.c). The AppleShare client reads a folder in pages
+ * (StartIndex 1, then on by what came back), and a folder may hold thousands of items, more
+ * than the Mac bridge's memory takes as a list. So the folder's listing stays open and the
+ * server keeps only a window of it: the entries around the page being read, packed into a
+ * fixed buffer, in the order the share gives them. A page past the window reads on; a page
+ * before it lists the folder again from the start. Memory: this buffer and the backend's own
+ * listing buffer, whatever the folder's size (docs/mac.md, "Large folders"). */
+#define AFPS_WIN_BYTES 16384
+#define AFPS_AD_BITS   8192
+typedef struct AfpsWin {
+	u32    dir;              /* the folder's ID, 0 = none */
+	LnDir *d;                /* its listing while there is more to read, else NULL */
+	u32    when;             /* ln_ms() of the last use */
+	u32    files_before, dirs_before;   /* the entries that went out of the front */
+	size_t used;             /* bytes of buf in use */
+	u32    buf[AFPS_WIN_BYTES / 4];     /* the entries (afps_afp.c, WinEnt), four-byte aligned */
+	/* the folder's "._" files, as bits of their names' hashes, from a first look at the whole
+	 * listing: a file whose bit is clear has no Finder info to read, which saves a lookup on
+	 * the share for nearly every item (on Samba a lookup that fails reads the whole folder) */
+	u8     ad[AFPS_AD_BITS / 8];
+	u8     adknown;
+} AfpsWin;
+#define AFPS_WIN_IDLE_MS 30000   /* a listing left open this long is closed */
 
 struct AfpsServer {
 	AfpsConfig  cfg;
@@ -176,11 +213,10 @@ struct AfpsServer {
 	u8          next_sid;
 	struct { AsAddr a; u16 tid; } recent[AFPS_RECENT];
 	unsigned    recent_pos;
-	u32         enum_dir, enum_when;
-	AfpsEnt    *ent;
-	int         nent, maxent;
+	AfpsWin     win;
 	struct { u32 id, when; u16 n; } offs[16];   /* recent folders' offspring counts */
 	unsigned    offs_pos;
+	u8          no_ad;       /* put_params: this item has no "._" file (the window's bits) */
 	u8          scratch[AS_QUANTUM + 64];   /* replies are built here */
 };
 
@@ -192,6 +228,8 @@ s32  afps_afp_call(AfpsServer *s, AfpsSess *se, const u8 *cmd, size_t n, const u
 size_t afps_write_size(const u8 *cmd, size_t n);
 /* a session ends: its forks close */
 void afps_afp_close_session(AfpsServer *s, AfpsSess *se);
+/* once a second: listings left open are closed */
+void afps_afp_tick(AfpsServer *s);
 void afps_afp_free(AfpsServer *s);
 
 #endif
