@@ -34,6 +34,14 @@ int ln_name_to_amiga(const char *utf8, char *out, size_t outmax);
 /* Amiga name -> remote UTF-8 name (undoes the escapes). */
 int ln_name_from_amiga(const char *amiga, char *out, size_t outmax);
 
+/* plain ISO-8859-1 <-> UTF-8 (the SMB server's view of Amiga names: no
+ * escapes, so every Amiga name is reachable and shown as it is). Latin-1 to
+ * UTF-8 always works; UTF-8 to Latin-1 returns -1 for a character outside
+ * Latin-1 (the client is told the name is invalid). Lengths, or -1 when the
+ * output does not fit. */
+int ln_latin1_to_utf8(const char *in, char *out, size_t outmax);
+int ln_utf8_to_latin1(const char *in, char *out, size_t outmax);
+
 /* case-insensitive compare of Latin-1 Amiga names (like DOS's) */
 int ln_amiga_stricmp(const char *a, const char *b);
 

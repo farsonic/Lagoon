@@ -207,8 +207,10 @@ int ln_udp_open(u16 port, const LnAddr *grp, LnSock **out)
 	if (grp) {
 		struct ip_mreq m;
 		memcpy(&m.imr_multiaddr, grp->a, 4);
+		unsigned char ttl = 255;
 		m.imr_interface.s_addr = htonl(INADDR_ANY);
 		setsockopt(fd, IPPROTO_IP, IP_ADD_MEMBERSHIP, &m, sizeof(m));
+		setsockopt(fd, IPPROTO_IP, IP_MULTICAST_TTL, &ttl, sizeof(ttl));   /* RFC 6762 11 */
 	}
 	*out = ln_alloc(sizeof(LnSock));
 	if (!*out) { close(fd); return LN_ENOMEM; }
@@ -296,4 +298,82 @@ int ln_tcp_connect_reserved(const char *host, u16 port, int timeout_ms, LnSock *
 		}
 	}
 	return last;
+}
+
+/* ---- server side ---- */
+int ln_tcp_listen(u16 port, LnSock **out)
+{
+	struct sockaddr_in sa;
+	int fd = socket(AF_INET, SOCK_STREAM, 0), one = 1;
+	if (fd < 0) return map_errno(errno);
+	setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one));
+	memset(&sa, 0, sizeof(sa));
+	sa.sin_family = AF_INET;
+	sa.sin_port = htons(port);
+	if (bind(fd, (struct sockaddr *)&sa, sizeof(sa)) < 0 || listen(fd, 8) < 0) {
+		int e = errno;
+		close(fd);
+		return e == EADDRINUSE ? LN_EINUSE : e == EACCES ? LN_EACCES : map_errno(e);
+	}
+	*out = ln_alloc(sizeof(LnSock));
+	if (!*out) { close(fd); return LN_ENOMEM; }
+	(*out)->fd = fd;
+	return LN_OK;
+}
+
+int ln_tcp_accept(LnSock *l, LnSock **out, LnAddr *peer)
+{
+	struct sockaddr_storage ss;
+	socklen_t len = sizeof(ss);
+	int fd, one = 1;
+	do fd = accept(l->fd, (struct sockaddr *)&ss, &len); while (fd < 0 && errno == EINTR);
+	if (fd < 0) return map_errno(errno);
+	setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one));
+	if (peer) from_sa((struct sockaddr *)&ss, peer);
+	*out = ln_alloc(sizeof(LnSock));
+	if (!*out) { close(fd); return LN_ENOMEM; }
+	(*out)->fd = fd;
+	return LN_OK;
+}
+
+int ln_net_poll(LnSock *const *s, int n, u8 *ready, int timeout_ms)
+{
+	struct pollfd p[80];
+	int i, r, k = 0;
+	if (n > 80) n = 80;
+	for (i = 0; i < n; i++) {
+		p[i].fd = s[i] ? s[i]->fd : -1;
+		p[i].events = POLLIN;
+		p[i].revents = 0;
+		ready[i] = 0;
+	}
+	do r = poll(p, (nfds_t)n, timeout_ms); while (r < 0 && errno == EINTR);
+	if (r < 0) return map_errno(errno);
+	for (i = 0; i < n; i++)
+		if (p[i].revents & (POLLIN | POLLHUP | POLLERR)) { ready[i] = 1; k++; }
+	return k;
+}
+
+int ln_local_addr(LnAddr *out)
+{
+	struct sockaddr_in sa;
+	socklen_t len = sizeof(sa);
+	int fd = socket(AF_INET, SOCK_DGRAM, 0);
+	if (fd < 0) return LN_ENOHOST;
+	memset(&sa, 0, sizeof(sa));
+	sa.sin_family = AF_INET;
+	sa.sin_port = htons(5353);
+	sa.sin_addr.s_addr = htonl(0xe00000fbu);      /* 224.0.0.251: the LAN interface */
+	if (connect(fd, (struct sockaddr *)&sa, sizeof(sa)) < 0 ||
+	    getsockname(fd, (struct sockaddr *)&sa, &len) < 0 || sa.sin_addr.s_addr == 0) {
+		close(fd);
+		memset(out, 0, sizeof(*out));
+		out->family = 4;
+		out->a[0] = 127; out->a[3] = 1;
+		return LN_OK;
+	}
+	close(fd);
+	from_sa((struct sockaddr *)&sa, out);
+	out->port = 0;
+	return LN_OK;
 }

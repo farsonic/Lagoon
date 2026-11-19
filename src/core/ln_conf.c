@@ -4,6 +4,8 @@
  */
 #include "ln_conf.h"
 #include "ln_err.h"
+#include "ln_hash.h"
+#include "ln_charset.h"
 
 static const u8 hide_key[] = "Lagoon/Amiga";
 static const char b64[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -58,10 +60,40 @@ int ln_conf_unhide(const char *h, char *out, size_t n)
 	return LN_OK;
 }
 
+void ln_conf_server_defaults(LnServerConf *s)
+{
+	memset(s, 0, sizeof(*s));
+	s->netbios = 1;
+	s->mdns = 1;
+}
+
 void ln_conf_init(LnConf *c)
 {
 	memset(c, 0, sizeof(*c));
 	c->loglevel = 0;
+	ln_conf_server_defaults(&c->server);
+}
+
+static int hexv(int c)
+{
+	if (c >= '0' && c <= '9') return c - '0';
+	if (c >= 'a' && c <= 'f') return c - 'a' + 10;
+	if (c >= 'A' && c <= 'F') return c - 'A' + 10;
+	return -1;
+}
+
+static int unhex16(const char *s, u8 out[16])
+{
+	int i;
+	if (strlen(s) != 32)
+		return -1;
+	for (i = 0; i < 16; i++) {
+		int a = hexv((u8)s[2 * i]), b = hexv((u8)s[2 * i + 1]);
+		if (a < 0 || b < 0)
+			return -1;
+		out[i] = (u8)(a * 16 + b);
+	}
+	return 0;
 }
 
 /* next key=value pair on the line; returns 0 at end of line */
@@ -97,6 +129,17 @@ static int pair(const char **pp, char *key, size_t kn, char *val, size_t vn, int
 	val[k] = 0;
 	*pp = p;
 	return 1;
+}
+
+static long strtol_simple(const char *v)
+{
+	long n = 0;
+	if (!*v) return -1;
+	for (; *v; v++) {
+		if (*v < '0' || *v > '9' || n > 1000000) return -1;
+		n = n * 10 + (*v - '0');
+	}
+	return n;
 }
 
 static int yes(const char *v)
@@ -144,6 +187,59 @@ int ln_conf_parse(LnConf *c, const char *text, int *errline)
 				return LN_EINVAL;
 			}
 			c->share[c->nshares++] = s;
+		} else if (!strncmp(p, "server", 6) && (p[6] == ' ' || p[6] == '\t')) {
+			LnServerConf *sv = &c->server;
+			p += 6;
+			while (pair(&p, key, sizeof(key), val, sizeof(val), &bad)) {
+				if (!strcmp(key, "name")) ln_strlcpy(sv->name, val, sizeof(sv->name));
+				else if (!strcmp(key, "workgroup")) ln_strlcpy(sv->workgroup, val, sizeof(sv->workgroup));
+				else if (!strcmp(key, "comment")) ln_strlcpy(sv->comment, val, sizeof(sv->comment));
+				else if (!strcmp(key, "signing")) sv->signing = !ln_strcasecmp(val, "required");
+				else if (!strcmp(key, "netbios")) sv->netbios = yes(val);
+				else if (!strcmp(key, "mdns")) sv->mdns = yes(val);
+				else if (!strcmp(key, "autostart")) sv->autostart = yes(val);
+				else if (!strcmp(key, "port")) sv->port = (int)strtol_simple(val);
+				else if (!strcmp(key, "log")) ln_strlcpy(sv->log, val, sizeof(sv->log));
+				else if (!strcmp(key, "loglevel")) sv->loglevel = val[0] - '0';
+				else add_extra(sv->extra, sizeof(sv->extra), key, val);
+			}
+			if (bad || sv->port < 0 || sv->port > 65535) {
+				if (errline) *errline = line;
+				return LN_EINVAL;
+			}
+		} else if (!strncmp(p, "export", 6) && (p[6] == ' ' || p[6] == '\t')) {
+			LnExport e;
+			memset(&e, 0, sizeof(e));
+			p += 6;
+			while (pair(&p, key, sizeof(key), val, sizeof(val), &bad)) {
+				if (!strcmp(key, "name")) ln_strlcpy(e.name, val, sizeof(e.name));
+				else if (!strcmp(key, "path")) ln_strlcpy(e.path, val, sizeof(e.path));
+				else if (!strcmp(key, "comment")) ln_strlcpy(e.comment, val, sizeof(e.comment));
+				else if (!strcmp(key, "readonly")) e.readonly = yes(val);
+				else if (!strcmp(key, "guest")) e.guest = yes(val);
+				else if (!strcmp(key, "users")) ln_strlcpy(e.users, val, sizeof(e.users));
+				else add_extra(e.extra, sizeof(e.extra), key, val);
+			}
+			if (bad || !e.name[0] || !e.path[0] || c->nexports >= LN_CONF_MAX_EXPORTS) {
+				if (errline) *errline = line;
+				return LN_EINVAL;
+			}
+			c->export_[c->nexports++] = e;
+		} else if (!strncmp(p, "user", 4) && (p[4] == ' ' || p[4] == '\t')) {
+			LnAccount a;
+			int have = 0;
+			memset(&a, 0, sizeof(a));
+			p += 4;
+			while (pair(&p, key, sizeof(key), val, sizeof(val), &bad)) {
+				if (!strcmp(key, "name")) ln_strlcpy(a.name, val, sizeof(a.name));
+				else if (!strcmp(key, "nthash")) { if (unhex16(val, a.nthash)) bad = 1; else have = 1; }
+				else add_extra(a.extra, sizeof(a.extra), key, val);
+			}
+			if (bad || !a.name[0] || !have || c->nusers >= LN_CONF_MAX_USERS) {
+				if (errline) *errline = line;
+				return LN_EINVAL;
+			}
+			c->user[c->nusers++] = a;
 		} else if (!strncmp(p, "option", 6) && (p[6] == ' ' || p[6] == '\t')) {
 			p += 6;
 			while (pair(&p, key, sizeof(key), val, sizeof(val), &bad)) {
@@ -210,6 +306,55 @@ int ln_conf_format(const LnConf *c, char *buf, size_t n)
 		l = ln_strlcat(buf, "\n", n);
 		if (l >= n) return -1;
 	}
+	{
+		const LnServerConf *sv = &c->server;
+		LnServerConf def;
+		ln_conf_server_defaults(&def);
+		if (c->nexports || c->nusers || memcmp(sv, &def, sizeof(def))) {
+			ln_strlcat(buf, "server", n);
+			if (sv->name[0]) q(buf, n, "name", sv->name);
+			if (sv->workgroup[0]) q(buf, n, "workgroup", sv->workgroup);
+			if (sv->comment[0]) q(buf, n, "comment", sv->comment);
+			ln_strlcat(buf, sv->signing ? " signing=required" : " signing=auto", n);
+			ln_strlcat(buf, sv->netbios ? " netbios=yes" : " netbios=no", n);
+			ln_strlcat(buf, sv->mdns ? " mdns=yes" : " mdns=no", n);
+			ln_strlcat(buf, sv->autostart ? " autostart=yes" : " autostart=no", n);
+			if (sv->port) {
+				ln_snprintf(tmp, sizeof(tmp), " port=%d", sv->port);
+				ln_strlcat(buf, tmp, n);
+			}
+			if (sv->log[0]) q(buf, n, "log", sv->log);
+			if (sv->loglevel) {
+				ln_snprintf(tmp, sizeof(tmp), " loglevel=%d", sv->loglevel);
+				ln_strlcat(buf, tmp, n);
+			}
+			if (sv->extra[0]) { ln_strlcat(buf, " ", n); ln_strlcat(buf, sv->extra, n); }
+			ln_strlcat(buf, "\n", n);
+		}
+	}
+	for (i = 0; i < c->nexports; i++) {
+		const LnExport *e = &c->export_[i];
+		ln_strlcat(buf, "export", n);
+		q(buf, n, "name", e->name);
+		q(buf, n, "path", e->path);
+		if (e->comment[0]) q(buf, n, "comment", e->comment);
+		ln_strlcat(buf, e->readonly ? " readonly=yes" : " readonly=no", n);
+		ln_strlcat(buf, e->guest ? " guest=yes" : " guest=no", n);
+		if (e->users[0]) q(buf, n, "users", e->users);
+		if (e->extra[0]) { ln_strlcat(buf, " ", n); ln_strlcat(buf, e->extra, n); }
+		ln_strlcat(buf, "\n", n);
+	}
+	for (i = 0; i < c->nusers; i++) {
+		const LnAccount *a = &c->user[i];
+		int k;
+		ln_strlcat(buf, "user", n);
+		q(buf, n, "name", a->name);
+		for (k = 0; k < 16; k++)
+			ln_snprintf(tmp + 2 * k, 3, "%02x", a->nthash[k]);
+		q(buf, n, "nthash", tmp);
+		if (a->extra[0]) { ln_strlcat(buf, " ", n); ln_strlcat(buf, a->extra, n); }
+		ln_strlcat(buf, "\n", n);
+	}
 	l = strlen(buf);
 	return l + 1 < n ? (int)l : -1;
 }
@@ -241,4 +386,94 @@ int ln_conf_remove(LnConf *c, const char *name)
 	memmove(&c->share[i], &c->share[i + 1], (size_t)(c->nshares - i - 1) * sizeof(LnShare));
 	c->nshares--;
 	return LN_OK;
+}
+
+/* ---- exports and users (the SMB server) ---- */
+LnExport *ln_conf_find_export(LnConf *c, const char *name)
+{
+	int i;
+	for (i = 0; i < c->nexports; i++)
+		if (!ln_strcasecmp(c->export_[i].name, name))
+			return &c->export_[i];
+	return NULL;
+}
+
+int ln_conf_put_export(LnConf *c, const LnExport *e)
+{
+	LnExport *o = ln_conf_find_export(c, e->name);
+	if (o) { *o = *e; return LN_OK; }
+	if (c->nexports >= LN_CONF_MAX_EXPORTS) return LN_ENOSPC;
+	c->export_[c->nexports++] = *e;
+	return LN_OK;
+}
+
+int ln_conf_remove_export(LnConf *c, const char *name)
+{
+	LnExport *e = ln_conf_find_export(c, name);
+	int i;
+	if (!e) return LN_ENOENT;
+	i = (int)(e - c->export_);
+	memmove(&c->export_[i], &c->export_[i + 1], (size_t)(c->nexports - i - 1) * sizeof(LnExport));
+	c->nexports--;
+	return LN_OK;
+}
+
+LnAccount *ln_conf_find_user(LnConf *c, const char *name)
+{
+	int i;
+	for (i = 0; i < c->nusers; i++)
+		if (!ln_strcasecmp(c->user[i].name, name))
+			return &c->user[i];
+	return NULL;
+}
+
+void ln_nthash(const char *password, u8 out[16])
+{
+	u8 b[512];
+	int n = ln_utf8_to_utf16le(password, strlen(password), b, sizeof(b));
+	ln_md4(b, n < 0 ? 0 : (size_t)n, out);
+	ln_wipe(b, sizeof(b));
+}
+
+int ln_conf_put_user(LnConf *c, const char *name, const char *password)
+{
+	LnAccount *a = ln_conf_find_user(c, name);
+	if (!name[0]) return LN_EINVAL;
+	if (!a) {
+		if (c->nusers >= LN_CONF_MAX_USERS) return LN_ENOSPC;
+		a = &c->user[c->nusers++];
+		memset(a, 0, sizeof(*a));
+	}
+	ln_strlcpy(a->name, name, sizeof(a->name));
+	ln_nthash(password, a->nthash);
+	return LN_OK;
+}
+
+int ln_conf_remove_user(LnConf *c, const char *name)
+{
+	LnAccount *a = ln_conf_find_user(c, name);
+	int i;
+	if (!a) return LN_ENOENT;
+	i = (int)(a - c->user);
+	memmove(&c->user[i], &c->user[i + 1], (size_t)(c->nusers - i - 1) * sizeof(LnAccount));
+	c->nusers--;
+	return LN_OK;
+}
+
+int ln_conf_user_listed(const char *list, const char *user)
+{
+	char w[64];
+	size_t k;
+	while (*list) {
+		while (*list == ' ' || *list == ',' || *list == '\t') list++;
+		k = 0;
+		while (*list && *list != ' ' && *list != ',' && *list != '\t') {
+			if (k + 1 < sizeof(w)) w[k++] = *list;
+			list++;
+		}
+		w[k] = 0;
+		if (k && !ln_strcasecmp(w, user))
+			return 1;
+	}
+	return 0;
 }

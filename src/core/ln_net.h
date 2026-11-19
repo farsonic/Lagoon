@@ -53,6 +53,20 @@ int  ln_udp_broadcast(LnSock *s, int on);
  * LN_EACCES if no reserved port can be bound (not privileged / all busy). */
 int  ln_tcp_connect_reserved(const char *host, u16 port, int timeout_ms, LnSock **out);
 
+/* ---- server side (Lagoon SERVE, src/core/srv) ----
+ * listen on TCP port (all IPv4 addresses); accept one pending connection
+ * (peer may be NULL). */
+int  ln_tcp_listen(u16 port, LnSock **out);
+int  ln_tcp_accept(LnSock *l, LnSock **out, LnAddr *peer);
+/* wait until one of n sockets is readable (or a listener has a connection
+ * waiting): ready[i] set to 1 for those. Returns the number ready, 0 on
+ * timeout, LN_EBREAK on Ctrl-C (Amiga). On the Amiga, Ctrl-C/Ctrl-F that
+ * arrive while waiting are left set for the caller (SetSignal). */
+int  ln_net_poll(LnSock *const *s, int n, u8 *ready, int timeout_ms);
+/* this machine's primary IPv4 address (for NetBIOS and mDNS answers);
+ * LN_OK or LN_ENOHOST */
+int  ln_local_addr(LnAddr *out);
+
 /* prefs package: net_amiga.c asks this for "*.local" names its stack cannot
  * resolve; Amiga programs set it to ln_mdns_resolve (ln_mdns.h) at start-up.
  * Amiga only (not defined by net_posix.c). */

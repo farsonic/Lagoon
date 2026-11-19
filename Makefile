@@ -15,7 +15,7 @@ CC    ?= gcc
 
 CORE_SRC  := $(wildcard src/core/*.c src/core/*/*.c)
 HOST_SRC  := $(wildcard src/host/*.c)
-HDRS      := $(wildcard src/core/*.h src/core/*/*.h src/amiga/*.h src/amiga/*/*.h)
+HDRS      := $(wildcard src/core/*.h src/core/*/*.h src/host/*.h src/amiga/*.h src/amiga/*/*.h)
 TESTS     := $(patsubst tests/%.c,build/host/%,$(wildcard tests/t_*.c))
 
 HCFLAGS := -std=c99 -g -O1 -Wall -Wextra -Wno-unused-parameter -Wno-missing-field-initializers -fsanitize=address,undefined \
@@ -90,3 +90,8 @@ build/amiga/cryptobench: tests/amiga/cryptobench.c build/amiga/liblagoon.lib
 	$(VC) $(ACFLAGS) -o $@ tests/amiga/cryptobench.c build/amiga/liblagoon.lib -lamiga
 build/host/cryptobench: tests/amiga/cryptobench.c build/host/liblagoon.a
 	$(CC) $(HCFLAGS) -o $@ $< build/host/liblagoon.a
+
+# lnsrv: the SMB server core sharing host directories (tests/servers/lagoon)
+build/host/lnsrv: tests/lnsrv.c build/host/liblagoon.a
+	$(CC) $(HCFLAGS) -o $@ $< build/host/liblagoon.a
+all: build/host/lnsrv

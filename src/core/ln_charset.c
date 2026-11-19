@@ -250,3 +250,39 @@ int ln_amiga_stricmp(const char *a, const char *b)
 	while (*a && lat1_lower((u8)*a) == lat1_lower((u8)*b)) { a++; b++; }
 	return lat1_lower((u8)*a) - lat1_lower((u8)*b);
 }
+
+int ln_latin1_to_utf8(const char *in, char *out, size_t outmax)
+{
+	size_t k = 0;
+	for (; *in; in++) {
+		u8 c = (u8)*in;
+		if (c < 0x80) {
+			if (k + 1 >= outmax) return -1;
+			out[k++] = (char)c;
+		} else {
+			if (k + 2 >= outmax) return -1;
+			out[k++] = (char)(0xc0 | (c >> 6));
+			out[k++] = (char)(0x80 | (c & 0x3f));
+		}
+	}
+	if (k >= outmax) return -1;
+	out[k] = 0;
+	return (int)k;
+}
+
+int ln_utf8_to_latin1(const char *in, char *out, size_t outmax)
+{
+	size_t k = 0, n = strlen(in), i = 0;
+	while (i < n) {
+		u32 cp;
+		int used = ln_utf8_decode(in + i, n - i, &cp);
+		if (cp > 0xff || cp == 0)
+			return -1;
+		if (k + 1 >= outmax) return -1;
+		out[k++] = (char)cp;
+		i += (size_t)used;
+	}
+	if (k >= outmax) return -1;
+	out[k] = 0;
+	return (int)k;
+}

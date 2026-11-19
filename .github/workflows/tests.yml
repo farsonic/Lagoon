@@ -1,6 +1,7 @@
 # Native tests of Lagoon's portable core (ASan/UBSan). The integration tests against Samba, Netatalk and
-# nfs-ganesha skip themselves when those servers aren't installed (as here); run them locally. The Amiga
-# build needs vbcc and the NDK; see CLAUDE.md.
+# nfs-ganesha skip themselves when those servers aren't installed (as here); run them locally. The SMB
+# server's end-to-end test (t_smbsrv_clients) runs here with smbclient and impacket. The Amiga build
+# needs vbcc and the NDK; see CLAUDE.md.
 name: tests
 on:
   push:
@@ -10,5 +11,9 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+      - name: smbclient and impacket for the SMB server test
+        run: |
+          sudo apt-get update -q && sudo apt-get install -y -q smbclient
+          python3 -m venv /tmp/impacket && /tmp/impacket/bin/pip install -q impacket
       - name: Native tests
-        run: make test
+        run: LAGOON_PY=/tmp/impacket/bin/python make test
