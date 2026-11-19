@@ -648,6 +648,14 @@ static int open_dir(LnFs *fs, const char *path, u8 fid[16])
 	return r;
 }
 
+/* how much a QUERY_DIRECTORY asks for at once. The Mac build asks for less (Makefile.mac): its
+ * AppleShare bridge lists folders at deferred-task time through Riptide, where a large
+ * folder's 64 KB answers timed out every time in the testbed and the connection was made
+ * again; with 16 KB answers the listing came through (docs/mac.md, "Large folders") */
+#ifndef LN_SMB_DIR_BUF
+#define LN_SMB_DIR_BUF 65536u
+#endif
+
 static int smb_opendir(LnFs *fs, const char *path, LnDir **out)
 {
 	LnDir *d = ln_alloc(sizeof(*d));
@@ -657,7 +665,7 @@ static int smb_opendir(LnFs *fs, const char *path, LnDir **out)
 		return LN_ENOMEM;
 	d->fs = fs;
 	d->path = ln_strdup(path);
-	d->cap = LN_MIN(fs->c.max_trans, 65536u);
+	d->cap = LN_MIN(fs->c.max_trans, (u32)LN_SMB_DIR_BUF);
 	d->buf = ln_alloc(d->cap);
 	if (!d->path || !d->buf) {
 		r = LN_ENOMEM;

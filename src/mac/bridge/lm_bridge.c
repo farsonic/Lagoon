@@ -150,7 +150,8 @@ static AfpsRelay relay;
 /* the multinode's datagrams, put here by its receive routine (bridge_glue.S) at interrupt time:
  * what .MPP had in its Read Header Area (the LAP header, then the long DDP header), then the
  * rest of the datagram. A slot is full while len is not 0. */
-#define MN_SLOTS 8
+#define MN_SLOTS 16       /* two whole ATP responses (eight datagrams each) and more; a power of
+                            two, bridge_glue.S wraps the head with MN_SLOTS - 1 */
 struct mn_slot { volatile unsigned short len, rha; u8 buf[620]; };
 struct mn_slot lmb_mn_ring[MN_SLOTS];
 volatile unsigned long lmb_mn_head;
@@ -214,9 +215,22 @@ void lmb_dt(void)
 	LM_STKLOWPT = saved_stklowpt;
 }
 
-/* the thread waits: back to the deferred task, again in ms milliseconds or when a call ends */
+static int poll_multinode(void);
+static int relaying;
+
+/* the thread waits: back to the deferred task, again in ms milliseconds or when a call ends.
+   What came to the multinode meanwhile is relayed first, in the middle of a call too: a call
+   that takes seconds (a large folder, a slow share) has the client send its request again,
+   and those copies must reach the server's socket while the call runs, where they are dropped
+   as repeats. Relayed only after the answer, each made .ATP send the whole answer once more
+   (the testbed, 19 November: an FPEnumerate of 4.5 s went to the client three times) */
 void lmb_thread_yield(unsigned ms)
 {
+	if (!relaying && srv) {
+		relaying = 1;
+		poll_multinode();
+		relaying = 0;
+	}
 	wanted_ms = ms < 2 ? 2 : (int)ms;
 	lmb_switch(&thread_sp, host_sp);
 }

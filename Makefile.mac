@@ -29,7 +29,7 @@ CFLAGS  := -m68020 -O2 -std=gnu99 -ffreestanding -fno-builtin -fno-pic -fno-pie 
 ifeq ($(AURORA68),1)
 CFLAGS  += -DAURORA68_LOG
 endif
-LN_CFLAGS := $(CFLAGS) -Isrc/core -Isrc/mui -Isrc/mac -include src/mac/mac_libc.h -DLM_BRIDGE
+LN_CFLAGS := $(CFLAGS) -Isrc/core -Isrc/mui -Isrc/mac -include src/mac/mac_libc.h -DLM_BRIDGE -DLN_SMB_DIR_BUF=16384u
 
 # Lagoon
 CORE_SRC := $(wildcard src/core/*.c src/core/*/*.c)

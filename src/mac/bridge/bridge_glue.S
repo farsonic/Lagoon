@@ -123,8 +123,9 @@ lmb_dtinstall:
 | Area starts at 1(A2) (toRHA), A3 = past the bytes already in it, A4 = ReadPacket (ReadRest at
 | 2(A4)), D1 = the bytes still to read; A0, A1 and D1 belong to .MPP until ReadRest. The routine
 | copies the header area and the rest of the datagram into the next slot of lmb_mn_ring
-| (lm_bridge.c: len, rha, then 620 bytes), marks it full and asks for the deferred task. With
-| no free slot the datagram is read into nothing (D3 = 0), as the AppleTalk Manager wants.
+| (lm_bridge.c: MN_SLOTS slots of len, rha, then 620 bytes), marks it full and asks for the
+| deferred task. With no free slot the datagram is read into nothing (D3 = 0), as the AppleTalk
+| Manager wants.
 	.equ	SLOT, 624
 	.equ	ROOM, 620
 	.globl	lmb_mn_recv
@@ -155,7 +156,7 @@ lmb_mn_recv:
 	move.w	%d0,(%a5)		| the length: the slot is full
 	move.l	lmb_mn_head,%d0
 	addq.l	#1,%d0
-	and.l	#7,%d0
+	and.l	#15,%d0		| MN_SLOTS - 1
 	move.l	%d0,lmb_mn_head
 	jsr	lmb_kick
 	bra.s	4f

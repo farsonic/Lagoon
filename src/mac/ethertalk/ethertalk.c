@@ -129,8 +129,12 @@ static struct {
 static struct amt amt[AMT_SIZE];
 static struct tx tx[NTX];
 static struct pend pend[NPEND];
-/* datagrams for one of this Mac's own nodes, handed up by a deferred task (et_loop_run) */
-#define NLOOP 8
+/* datagrams for one of this Mac's own nodes, handed up by a deferred task (et_loop_run). An
+   ATP response is up to eight datagrams, which .ATP writes in one go, before any deferred task
+   can run: with eight slots (seven usable) the eighth of a full response was dropped, and the
+   requester had to ask for it again after its retry time (the bridge's FPRead of 4608 bytes is
+   such a response). Room for three whole responses */
+#define NLOOP 25
 static struct { u16 len; u8 ddp[DDP_MAX]; } loopq[NLOOP];
 static volatile u8 loop_head, loop_tail, loop_queued;
 static struct { void *qlink; s16 qtype; s16 flags; void *addr; void *param; u32 res; } __attribute__((packed)) loop_dt;

@@ -256,7 +256,12 @@ static void finfo_of(AfpsServer *s, const char *path, const char *name, int isdi
 	}
 }
 
-/* ---- folders: offspring counts ---- */
+/* ---- folders: offspring counts ----
+ * A folder's count is a listing of it, which for a folder of thousands of items takes seconds
+ * on the Mac. The Finder asks again for every folder in an open window each time it looks for
+ * changes (every ten seconds or so), so a count is kept for half a minute, and until the
+ * server itself changes something */
+#define AFPS_OFFS_MS 30000u
 static int offspring(AfpsServer *s, u32 id, const char *path)
 {
 	LnDir *d;
@@ -266,7 +271,7 @@ static int offspring(AfpsServer *s, u32 id, const char *path)
 	int n = 0, r;
 	u32 now = ln_ms();
 	for (i = 0; i < LN_ARRAY_SIZE(s->offs); i++)
-		if (s->offs[i].id == id && now - s->offs[i].when < 5000)
+		if (s->offs[i].id == id && now - s->offs[i].when < AFPS_OFFS_MS)
 			return s->offs[i].n;
 	RETRY(s, r, s->ops->opendir(s->fs, path, &d));
 	if (r != LN_OK)

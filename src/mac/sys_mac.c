@@ -92,9 +92,18 @@ u32 ln_time_unix(void)
 	return (u32)(LM_TIME - 2082844800UL) - (u32)(ln_tz_minutes() * 60);
 }
 
+/* milliseconds that never go back. Microseconds read at deferred-task time was seen a few
+ * milliseconds behind an earlier reading (Aurora68's testbed, 19 November), and a clock that
+ * steps back makes every "now - then > limit" test true at once: an AppleShare session closed
+ * for silence, a wait timed out */
 u32 ln_ms(void)
 {
-	return (u32)(mac_us() / 1000u);
+	static u32 last;
+	u32 now = (u32)(mac_us() / 1000u);
+	if ((s32)(now - last) < 0)
+		return last;
+	last = now;
+	return now;
 }
 
 void ln_random(void *buf, size_t n)
