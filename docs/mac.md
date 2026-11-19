@@ -293,6 +293,13 @@ Not working or not known yet:
   registered-user login from the Mac (the server supports clear text when configured, the GUI
   offers guest only); LocalTalk or another 'atlk'; another Mac on the network using the bridge;
   real hardware; performance (copies ran at testbed speed, not measured).
+- Real hardware (19 November 2026): on a Raspberry Pi 3B running Aurora68's solo board (System
+  7.1, the Pi's WiFi as the Mac's only network card, the wired one hidden by the kernel), the
+  user mounted an SMB share with guest access through the bridge: AppleTalk made active in the
+  Chooser, Lagoon EtherTalk chosen in the Network control panel, "Put on Desktop" in Lagoon's
+  window. So Lagoon EtherTalk fell back to the WiFi card as expected, and AppleTalk between the
+  Mac and the bridge's node worked over it. Not yet tried there: logging in with a password,
+  copying large files, speed.
 - Known limits: one share at a time; the Finder writes Finder info for items it shows, so
   browsing leaves `._` files beside them on the share (as a Mac running macOS does); volumes
   larger than 2 GB show as 2 GB (AFP 2.x counts in 32 bits); the desktop database is empty
