@@ -4,7 +4,8 @@
 
 Network shares on your Amiga: Lagoon mounts Windows/macOS/Samba shares (SMB
 2 and 3), older Macs and Netatalk servers (AFP) and Unix servers (NFS v3) as
-ordinary AmigaDOS volumes. It runs on AmigaOS 3.x (68020 or better) with any
+ordinary AmigaDOS volumes, and shares the Amiga's own folders with Windows,
+macOS and Linux over SMB, with or without a password. It runs on AmigaOS 3.x (68020 or better) with any
 bsdsocket.library TCP/IP stack and is developed with
 [Riptide](https://github.com/farsonic/riptide).
 
@@ -16,10 +17,12 @@ bsdsocket.library TCP/IP stack and is developed with
   you mount becomes a device such as `NAS:` with a volume on Workbench;
   any program can open, save, copy, rename and delete files on it.
 * **Lagoon** (`C:`): mounts and unmounts shares (`Lagoon MOUNT NAS`,
-  `Lagoon UNMOUNT NAS`, `Lagoon MOUNTALL` at boot, `Lagoon LIST`).
+  `Lagoon UNMOUNT NAS`, `Lagoon MOUNTALL` at boot, `Lagoon LIST`), and
+  shares Amiga folders (`Lagoon SHARE`, `Lagoon USER`, `Lagoon SERVE`).
 * **LagoonPrefs** (`SYS:Prefs`): the share list editor, with a network
   browser that finds servers by mDNS/Bonjour and NetBIOS, share lists, and
-  a Test button. GadTools only: no MUI needed.
+  a Test button; its **Sharing** window shares your folders. GadTools only:
+  no MUI needed.
 * **Install_Lagoon**: an Installer script that sets it all up.
 
 ## Requirements
@@ -30,12 +33,14 @@ bsdsocket.library TCP/IP stack and is developed with
 
 ## Install
 
-Unpack `lagoon-0.1.lha` (or use `lagoon-0.1.adf`) and double-click
+Unpack `lagoon-0.2.lha` (or use `lagoon-0.2.adf`) and double-click
 **Install_Lagoon**. It copies the handler, the command and LagoonPrefs,
 installs the translations (German, French, Spanish, Italian), keeps an
 existing share list, warns when no TCP/IP stack is installed, and adds
 `Lagoon MOUNTALL WAIT 30 >NIL:` to `S:User-Startup` after your stack's
-block. Details and the manual way: [docs/install.md](docs/install.md).
+block (and `Run >NIL: Lagoon SERVE AUTO WAIT 30`, which starts the file
+server at boot when you tick *Start at boot* in the Sharing window).
+Details and the manual way: [docs/install.md](docs/install.md).
 
 ## Quick start
 
@@ -59,6 +64,50 @@ block. Details and the manual way: [docs/install.md](docs/install.md).
 
 From a Shell: `Lagoon MOUNT Public`, `Dir Public:`, `Lagoon UNMOUNT Public`.
 LagoonPrefs in detail: [docs/prefs.md](docs/prefs.md).
+
+## Sharing the Amiga's folders
+
+Lagoon has an SMB server too: Windows, Macs and Linux machines can open
+folders of your Amiga, read and write them.
+
+![Sharing](docs/images/prefs-sharing.png)
+
+In **LagoonPrefs** press **Sharing...**, then **Add...**: give the share a
+name, pick the folder with **Choose...**, and either tick **Allow guests
+(no password)** or add a user under **Users...** (a name and a password).
+Press **Start server**; tick **Start at boot** to have it every time, then
+**OK** and **Save**.
+
+![A shared folder](docs/images/prefs-sharing-folder.png)
+
+Or from a Shell:
+
+```
+Lagoon SHARE Public PATH Work:Public GUEST     ; no password needed
+Lagoon SHARE Work PATH DH0:Work                ; for users with a password
+Lagoon USER bob PASSWORD "a long passphrase"
+Run >NIL: Lagoon SERVE                         ; Lagoon SERVE STOP stops it
+```
+
+Connect from the other computer:
+
+* **Windows**: type `\\AMIGA\Public` (your Amiga's computer name, or its
+  address: `\\192.168.1.20\Public`) in Explorer's address bar; for a
+  password share enter the Amiga user, e.g. `bob`. Windows 11 (and recent
+  Windows 10) refuse guest shares by default: use a password share there.
+* **macOS**: Finder, *Go > Connect to Server...*, `smb://amiga.local/Public`
+  (the Amiga also shows up under *Network* in the sidebar).
+* **Linux**: `smbclient //amiga/Public -N`, `smbclient //amiga/Work -U bob`,
+  or `sudo mount -t cifs //amiga/Work /mnt -o user=bob`; GNOME Files and
+  Dolphin: `smb://amiga.local/`.
+
+**Security:** Lagoon signs SMB messages for logged-on users but does not
+encrypt them. Share only on a network you trust (your home LAN), never
+forward ports 445/139 from the Internet, and use passwords for anything
+private. The password is not stored, only its NT hash, which is still as
+good as the password to an SMB client: keep `ENVARC:Lagoon/lagoon.conf`
+private. Details, what is supported and what was tested:
+[docs/server.md](docs/server.md).
 
 ## Protocols
 
@@ -95,7 +144,7 @@ show are kept as `%XX` escapes so every file stays reachable.
 ```
 make && make test        # native core + tests (Linux, gcc)
 make amiga               # vbcc + NDK 3.2: build/amiga/
-make package             # build/lagoon-0.1.lha (+ .adf), see docs/install.md
+make package             # build/lagoon-0.2.lha (+ .adf), see docs/install.md
 ```
 
 ## Licence

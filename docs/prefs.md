@@ -114,6 +114,44 @@ usually found by mDNS, or enter them by name.
 Lagoon resolves `name.local` host names itself (mDNS) when the TCP/IP stack
 cannot, so a share on `nas.local` works without a DNS server.
 
+## Sharing
+
+**Sharing...** (to the right of the line under the list) opens the window
+that shares this Amiga's folders with Windows, macOS and Linux over SMB
+([server.md](server.md)):
+
+![Sharing](images/prefs-sharing.png)
+
+| Gadget | Does |
+|---|---|
+| **Computer name** | the name other computers see (`\\A1200`, `a1200.local`); empty: the `HOSTNAME` variable |
+| **Workgroup** | the Windows workgroup (usually WORKGROUP) |
+| list | the shared folders: name, folder, access (read-only or read/write, guests, users) |
+| **Add...**, **Edit...**, **Remove** | a shared folder (below) |
+| **Users...** | the users who may log on: **Add...** (a name and the password twice), **Set password...**, **Remove**. Only the password's NT hash is kept |
+| **Start at boot** | the line Install_Lagoon put in `S:User-Startup` (`Lagoon SERVE AUTO`) starts the server |
+| **Start server** / **Stop server** | starts the server now with the folders as they are in the window (it writes `ENV:Lagoon/lagoon.conf` first), or stops it; the line beside it says whether it runs |
+| **OK** / **Cancel** | keep the changes (they are written with the main window's **Save** or **Use**; a running server then reloads) / forget them |
+
+The users (**Users...**), here with a new one being added:
+
+![Users](images/prefs-sharing-users.png)
+
+A shared folder:
+
+![A shared folder](images/prefs-sharing-folder.png)
+
+| Field | Meaning |
+|---|---|
+| **Share name** | what the other computers see (`\\A1200\Work`); 1 to 31 characters |
+| **Folder** | the Amiga folder (`Work:`, `DH0:Projects`); **Choose...** opens a folder requester (and fills in the name) |
+| **Comment** | shown in share lists |
+| **Users** | user names separated by spaces; empty = every user. Ignored for guests |
+| **Allow guests (no password)** | anyone on the network may use it |
+| **Read-only** | nobody can change, add or delete files |
+
+OK warns when nobody could use the folder yet (no guests and no users).
+
 ## Starting it from the Shell
 
 ```
@@ -176,7 +214,8 @@ URL options written by the editor: SMB `sign=required`, `encrypt=yes`; AFP
 ## For developers
 
 `src/amiga/prefs/`: `lagoonprefs.c` (main window, files, menus),
-`editor.c` (share editor, password hook, Test), `browse.c` (network
+`editor.c` (share editor, password hook, Test), `sharing.c` (the Sharing
+window, shared folder editor, users), `browse.c` (network
 browser, share pick list), `gui.c` (fonts, layout helpers, requesters,
 catalog), `strings.h` (generated). Discovery is portable core code:
 `src/core/ln_mdns.c` and `src/core/ln_netbios.c`, tested natively by

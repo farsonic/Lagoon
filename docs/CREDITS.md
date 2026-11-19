@@ -19,3 +19,9 @@ Taken or adapted from Riptide (same author, GPL-2.0-only):
 
 Discovery (`src/core/ln_mdns.c`, `src/core/ln_netbios.c`) is written from
 RFC 1035, RFC 6762, RFC 6763 and RFC 1001/1002.
+
+The SMB server (`src/core/srv/`) is written from Microsoft's open
+specifications MS-SMB2, MS-NLMP, MS-SPNG, MS-SRVS, MS-FSCC and MS-DTYP, RFC
+4178 and The Open Group's C706 (DCE/RPC); its tests use the NTLMv2 example
+values of MS-NLMP 4.2.4. The end-to-end tests drive it with Samba's
+smbclient and impacket (not part of Lagoon).

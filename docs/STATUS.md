@@ -1,3 +1,31 @@
+# Lagoon status
+
+## 0.2 (not released yet): sharing Amiga folders
+
+The SMB server ([server.md](server.md)): `Lagoon SHARE/USER/SERVE`,
+LagoonPrefs' Sharing window, the Installer's `Lagoon SERVE AUTO` line.
+
+- Native (Linux, ASan/UBSan): `t_smbsrv` (670 checks: MS-NLMP NTLMv2
+  vectors, lagoon.conf, NetBIOS/mDNS answers read back with Lagoon's own
+  discovery code, raw protocol units with compounds, then Lagoon's SMB
+  client against the server on 2.0.2/2.1/3.0/3.0.2/3.1.1, CMAC and GMAC,
+  signing required, guest, wrong passwords, read-only, share lists) and
+  `t_smbsrv_clients` (smbclient 4.19 on every dialect with signing
+  required; impacket on 2.0.2/2.1/3.0/3.1.1 and an NT-hash logon).
+- Emulated A1200 (68020, AROS ROM, Riptide 0.14), `tests/amiga/run_share_emu.sh`:
+  the Sharing window driven by keyboard (folders, guests, a user, Start
+  at boot, Start/Stop server, Save), then from the host: share list, guest
+  and password shares, smbclient on every dialect with signing, impacket,
+  wrong password and guest refusals, `nmblookup -A`, an mDNS query; the
+  saved lagoon.conf holds the NT hash, never the password.
+- Speed on the emulated A1200 (512 KB with smbclient, logon included):
+  SMB 2.1 unsigned ~325 KB/s to the Amiga, ~150-185 KB/s from it; SMB 3.1.1
+  signed (GMAC) ~85 KB/s to, ~75 KB/s from.
+- Not tested yet: Windows Explorer, macOS Finder, mount.cifs, GNOME/KDE,
+  real hardware, other stacks. Not done: encryption, WS-Discovery (Windows'
+  Network folder), CHANGE_NOTIFY, oplocks/leases, enforced byte-range
+  locks, named streams, ACLs.
+
 # Lagoon 0.1 status
 
 ## Tested

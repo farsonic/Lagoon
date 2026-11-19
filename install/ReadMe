@@ -2,7 +2,9 @@ Lagoon @VERSION@ - network shares as Amiga volumes
 
 Lagoon mounts SMB 2/3 shares (Windows, macOS, Samba, NAS boxes), AFP
 volumes (older Macs) and NFS exports (Unix, Linux) as AmigaDOS volumes,
-over any TCP/IP stack (Riptide, Roadshow, Miami, AmiTCP, Genesis).
+over any TCP/IP stack (Riptide, Roadshow, Miami, AmiTCP, Genesis). It
+also shares the Amiga's own folders with Windows, macOS and Linux (SMB),
+for guests or for users with a password.
 
 Requirements: a 68020 or better, AmigaOS 3.0 (V39) or newer, a running
 TCP/IP stack.
@@ -10,17 +12,26 @@ TCP/IP stack.
 Installation: double-click Install_Lagoon. It copies
 
     L:lagoon-handler         the file system handler
-    C:Lagoon                 MOUNT, UNMOUNT, LIST, MOUNTALL ...
+    C:Lagoon                 MOUNT, UNMOUNT, LIST, MOUNTALL ...,
+                             SHARE, USER, SERVE
     SYS:Prefs/LagoonPrefs    the share list editor
     LOCALE:Catalogs/         German, French, Spanish, Italian
 
-and adds "Lagoon MOUNTALL WAIT 30 >NIL:" to S:User-Startup.
+and adds "Lagoon MOUNTALL WAIT 30 >NIL:" and "Run >NIL: Lagoon SERVE AUTO
+WAIT 30" (the file server, when "Start at boot" is ticked) to
+S:User-Startup.
 
 Then open SYS:Prefs/LagoonPrefs, press "Browse network..." (or "Add..."),
 choose the server and the share, "Test" it, tick "Mount at startup" and
 press "Save". "Mount" mounts it at once.
 
-The manual is in Docs/ (README.md, install.md, prefs.md).
+To share Amiga folders: LagoonPrefs, "Sharing...", "Add...", pick the
+folder, tick "Allow guests" or add a user under "Users...", then "Start
+server". Other computers open \\AMIGA\<share> (Windows) or
+smb://amiga.local/<share> (Mac, Linux). Only on a network you trust: the
+transfers are signed but not encrypted.
+
+The manual is in Docs/ (README.md, install.md, prefs.md, server.md).
 
 Free software under the GNU General Public License version 2
 (Docs/LICENSE). It comes with ABSOLUTELY NO WARRANTY.

@@ -1,8 +1,13 @@
 # C:Lagoon
 
-The command-line tool for mounting network shares. Template:
+The command-line tool for mounting network shares, and for sharing the
+Amiga's own folders (SHARE, USER, SERVE). Template:
 
-    COMMAND/A,NAME,AS/K,USER/K,PASSWORD/K,DOMAIN/K,READONLY/S,VOLUME/K,WAIT/K/N
+    COMMAND/A,NAME,AS/K,USER/K,PASSWORD/K,DOMAIN/K,READONLY/S,VOLUME/K,WAIT/K/N,
+    PATH/K,GUEST/S,USERS/K,COMMENT/K,DELETE/S,LOG/K,PORT/K/N,NOGUEST/S,READWRITE/S
+
+(`Lagoon USER ...` lines are read with `COMMAND/A,NAME,PASSWORD/K,DELETE/S`,
+because USER is also MOUNT's keyword.)
 
 `Lagoon HELP` (or `Lagoon ?`) prints a summary. Shares are defined in
 `ENV:Lagoon/lagoon.conf` (written by LagoonPrefs, copied from `ENVARC:` at
@@ -105,6 +110,60 @@ Useful to check a share's settings:
       812.3 GB free of 1.7 TB
       14 entries in the root directory
     Test OK
+
+## Sharing folders: SHARE, USER, SERVE
+
+Lagoon's SMB server shares Amiga folders with Windows, macOS and Linux
+([server.md](server.md)). SHARE and USER write `ENVARC:Lagoon/lagoon.conf`
+and `ENV:Lagoon/lagoon.conf` (like LagoonPrefs' Save) and tell a running
+server to reload.
+
+    Lagoon SHARE
+
+lists the shared folders, the users and whether the server runs:
+
+    SMB server "A1200" (workgroup WORKGROUP): running, starts at boot
+    Share            Folder                   Access
+    Public           Work:Public              read/write, guests
+    Projects         DH0:Projects             read-only, users bob alice
+    Users: bob alice
+
+    Lagoon SHARE <name> PATH <folder> [READONLY] [GUEST] [USERS "a b"] [COMMENT text]
+    Lagoon SHARE <name> [READWRITE|READONLY] [GUEST|NOGUEST] [USERS ...] [PATH ...]
+    Lagoon SHARE <name> DELETE
+
+shares a folder under a name (1 to 31 characters, no `\ / : * ? " < > | [ ] ; = , +`),
+changes a shared folder, or stops sharing it. **GUEST**: anyone may use it
+without a password. Without GUEST a user with a password is needed;
+**USERS** limits it to the users named (`""` = every user).
+
+    Lagoon USER                          ; the users
+    Lagoon USER <name> PASSWORD <password>
+    Lagoon USER <name> DELETE
+
+adds a user or sets the password (only the NT hash is stored; the password
+appears in the Shell history, so LagoonPrefs is the better place for it),
+or removes a user.
+
+    Lagoon SERVE [WAIT <seconds>] [LOG <file>] [PORT <n>] [AS <name>] [DOMAIN <workgroup>]
+
+runs the server until Ctrl-C: TCP 445 (and 139), NetBIOS names on UDP 137,
+mDNS on UDP 5353. It prints one line and then works silently; **LOG**
+writes connections and logons to a file. **WAIT** waits that long for the
+TCP/IP stack first. **AS** and **DOMAIN** use another computer name or
+workgroup for this run. Ctrl-F (or `Lagoon SERVE RELOAD`) re-reads
+lagoon.conf; clients reconnect by themselves. Usually run in the background:
+
+    Run >NIL: Lagoon SERVE
+
+    Lagoon SERVE STOP        ; stop the server running in the background
+    Lagoon SERVE RELOAD      ; make it re-read lagoon.conf
+    Lagoon SERVE AUTO ...    ; start only if "Start at boot" (autostart=yes) is set
+
+`Install_Lagoon` puts `Run >NIL: Lagoon SERVE AUTO WAIT 30` into
+`S:User-Startup`, so ticking *Start at boot* in LagoonPrefs is all it takes.
+The server process is called "Lagoon server" (visible in task lists);
+"already running" is reported when one is.
 
 ## For programmers
 

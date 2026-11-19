@@ -1,7 +1,8 @@
 # Lagoon design
 
 Lagoon mounts network shares as AmigaDOS volumes on AmigaOS 3.x (68020+),
-over any bsdsocket.library stack; it is developed and tested on Riptide.
+over any bsdsocket.library stack, and shares Amiga folders over SMB 2/3 (the
+server, [server.md](server.md)); it is developed and tested on Riptide.
 
 | Protocol | Servers | Backend |
 |---|---|---|
@@ -24,11 +25,17 @@ src/core/          portable C99 (gcc on Linux for tests, vbcc for the Amiga)
   ln_hash.h        MD4, MD5, SHA-256, SHA-512, HMAC      (crypto/hash.c)
   crypto/          ciphers (AES, CMAC, CCM, GCM, RC4 for SMB; bignum/CAST-128 for AFP)
   smb/ afp/ nfs/   the backends, each exporting `const LnOps ln_<scheme>_ops`
-src/host/          POSIX sys + net (native tests, lncli)
-src/amiga/         sys_amiga.c, net_amiga.c (bsdsocket), then:
+  ln_srv.h, srv/   the SMB2 server: connections, NTLMSSP, files, srvsvc,
+                   NetBIOS/mDNS answers, the network loop; shares are LnOps
+src/host/          POSIX sys + net (native tests, lncli), fs_posix.c (a host
+                   directory as an LnOps backend, for the server's tests)
+src/amiga/         sys_amiga.c, net_amiga.c (bsdsocket), fs_dos.c (an Amiga
+                   folder as an LnOps backend, for the server), then:
   handler/         L:lagoon-handler, the DOS file system handler (one process per mount)
-  cmd/             C:Lagoon  (MOUNT, UNMOUNT, LIST, MOUNTALL, STATUS ...)
-  prefs/           SYS:Prefs/LagoonPrefs (GadTools share editor, network browser)
+  cmd/             C:Lagoon  (MOUNT, UNMOUNT, LIST, MOUNTALL, STATUS ...;
+                   SHARE, USER, SERVE run the server: cmd/serve.c)
+  prefs/           SYS:Prefs/LagoonPrefs (GadTools share editor, network
+                   browser, Sharing window: prefs/sharing.c)
 tests/             t_*.c native unit/integration tests, lncli.c, servers/, amiga/run_emu.sh
 install/           Install_Lagoon (Installer script), icons, ReadMe
 ```
@@ -66,6 +73,18 @@ AFP, raw bytes for NFS, treated as UTF-8). Times are Unix UTC seconds.
 deletes files and empty directories. `max_io` tells the handler how big its
 read/write requests should be. `list_shares` serves the prefs Browse button.
 
+## Server (src/core/srv)
+
+The same `LnOps` interface runs the other way: every shared folder is an
+LnOps file system (`fs_dos.c` on the Amiga, `fs_posix.c` or `mem` in the
+tests), and the server turns SMB2 requests into LnOps calls. An
+`LnSrvConn` takes whole SMB messages and returns the reply, so the protocol
+is tested without sockets; `ln_srv_serve()` is one task with a
+WaitSelect/poll loop over the listeners, the NetBIOS and mDNS sockets and
+up to 16 clients. Signing reuses the client's key derivation
+(`smb_derive_keys`, `smb_sign_msg` on an `SmbConn` that only holds keys).
+Users are NT hashes from lagoon.conf. Details: [server.md](server.md).
+
 ## Handler (src/amiga/handler)
 
 One handler process per mounted share, started by DOS from a DeviceNode
@@ -82,7 +101,9 @@ after network loss, and shows a volume on Workbench.
 
 `ENVARC:Lagoon/lagoon.conf` (format in ln_conf.h), copied to `ENV:Lagoon/`
 on boot. LagoonPrefs edits it; `Lagoon MOUNTALL` in S:User-Startup (after the
-TCP/IP stack starts) mounts the shares marked automount.
+TCP/IP stack starts) mounts the shares marked automount, and
+`Lagoon SERVE AUTO` starts the server when sharing is switched on. The
+server's lines (`server`, `export`, `user`) live in the same file.
 
 ## Licence
 

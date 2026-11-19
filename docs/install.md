@@ -11,19 +11,19 @@
 
 ## The package
 
-`lagoon-0.1.lha` unpacks into a drawer `Lagoon`:
+`lagoon-0.2.lha` unpacks into a drawer `Lagoon`:
 
 | File | Installed to |
 |---|---|
 | `Install_Lagoon` | the Installer script (double-click it) |
 | `L/lagoon-handler` | `L:` the file system handler, started by AmigaDOS for each mounted share |
-| `C/Lagoon` | `C:` (or a drawer you choose) the command: `MOUNT`, `UNMOUNT`, `LIST`, `MOUNTALL` ... |
+| `C/Lagoon` | `C:` (or a drawer you choose) the command: `MOUNT`, `UNMOUNT`, `LIST`, `MOUNTALL` ..., and `SHARE`, `USER`, `SERVE` for sharing folders |
 | `Prefs/LagoonPrefs` | `SYS:Prefs` the share list editor, with its icon |
 | `Catalogs/` | `LOCALE:Catalogs/<language>/` German, French, Spanish, Italian |
-| `Docs/` | a drawer you choose: README.md, install.md, prefs.md, LICENSE, CREDITS.md |
+| `Docs/` | a drawer you choose: README.md, install.md, prefs.md, server.md, LICENSE, CREDITS.md |
 | `ReadMe`, `Lagoon.readme` | short instructions, the Aminet readme |
 
-The same files are on `lagoon-0.1.adf` (an 880 KB floppy image) for
+The same files are on `lagoon-0.2.adf` (an 880 KB floppy image) for
 emulators.
 
 ## Running the Installer
@@ -47,12 +47,16 @@ shares are mounted at boot. It
    ```
    ;BEGIN Lagoon
    Lagoon MOUNTALL WAIT 30 >NIL:
+   Run >NIL: Lagoon SERVE AUTO WAIT 30
    ;END Lagoon
    ```
 
    `MOUNTALL` mounts the shares marked *Mount at startup*; `WAIT 30` gives
-   the stack up to 30 seconds to come up. When you install again, the
-   Installer replaces the block in place.
+   the stack up to 30 seconds to come up. `SERVE AUTO` starts the file
+   server for shared Amiga folders, but only when *Start at boot* is ticked
+   in LagoonPrefs' Sharing window (otherwise it ends at once). As
+   *Intermediate* or *Expert* you can leave either line out. When you
+   install again, the Installer replaces the block in place.
 
 Then open **SYS:Prefs/LagoonPrefs** and add your shares
 ([prefs.md](prefs.md)).
@@ -63,7 +67,8 @@ Run `Install_Lagoon` again: *Install* updates the programs and keeps
 your share list; *Uninstall* unmounts the shares, removes the programs,
 catalogs and documentation (the Installer remembers where it put them in
 `ENVARC:Lagoon/BinDir`, `DocDir` and `PrefsDir`) and empties the Lagoon
-block in `S:User-Startup`. It asks before deleting your share list.
+block in `S:User-Startup` (stop a running file server first with
+`Lagoon SERVE STOP`). It asks before deleting your share list.
 
 ## Installing by hand
 
@@ -74,7 +79,8 @@ Copy Lagoon/Prefs/LagoonPrefs#? SYS:Prefs/
 MakeDir ENVARC:Lagoon ENV:Lagoon
 ```
 
-and add `Lagoon MOUNTALL WAIT 30 >NIL:` to `S:User-Startup` after the line
+and add `Lagoon MOUNTALL WAIT 30 >NIL:` (and, for sharing folders,
+`Run >NIL: Lagoon SERVE AUTO WAIT 30`) to `S:User-Startup` after the line
 that starts your TCP/IP stack. For a translation copy e.g.
 `Lagoon/Catalogs/deutsch/LagoonPrefs.catalog` to
 `LOCALE:Catalogs/deutsch/` (`francais` goes to `français`, `espanol` to
@@ -89,8 +95,8 @@ make && make test && make amiga && make package
 `make package` runs `tools/mkpackage.sh`: it builds the catalogs
 (`tools/mkcatalog.py`), the icons (`tools/mkicon.py`, adapted from
 Riptide's), stages `build/package/Lagoon/`, archives it as
-`build/lagoon-0.1.lha` (with `lha` or `jlha`; a zip otherwise) and writes
-`build/lagoon-0.1.adf` when amitools' `xdftool` is installed. It refuses to
+`build/lagoon-0.2.lha` (with `lha` or `jlha`; a zip otherwise) and writes
+`build/lagoon-0.2.adf` when amitools' `xdftool` is installed. It refuses to
 package certificates or private keys.
 
 Checks: `tests/amiga/check_installer.py install/Install_Lagoon` (a static
